@@ -1,0 +1,12 @@
+{
+  "listenAddress": "127.0.0.1",
+  "port": 56110,
+  "tls": false,
+  "allowInsecureLoopback": true,
+  "usersFile": "../data/users.json",
+  "workspaceFile": "../data/workspace.sqlite",
+  "idleExitMs": 0,
+  "maxConnections": 128,
+  "loginTimeoutMs": 30000,
+  "idleTimeoutMs": 60000
+}

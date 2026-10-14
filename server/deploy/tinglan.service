@@ -1,0 +1,24 @@
+[Unit]
+Description=Tinglan central chat server
+After=network.target
+
+[Service]
+Type=simple
+User=tinglan
+Group=tinglan
+WorkingDirectory=/opt/tinglan
+ExecStart=/opt/tinglan/im_server --config /etc/tinglan/server.json
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tinglan
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+{
+  "listenAddress": "0.0.0.0",
+  "port": 56000,
+  "tls": true,
+  "allowInsecureLoopback": false,
+  "certificateFile": "/etc/tinglan/tls/fullchain.pem",
+  "keyFile": "/etc/tinglan/tls/privkey.pem",
+  "usersFile": "/var/lib/tinglan/users.json",
+  "maxConnections": 128,
+  "loginTimeoutMs": 30000,
+  "idleTimeoutMs": 60000,
+  "workspaceFile": "/var/lib/tinglan/workspace.sqlite"
+}

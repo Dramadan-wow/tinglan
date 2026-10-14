@@ -1,0 +1,29 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "qt-desktop",
+      "displayName": "Qt 6.8.3 Desktop / MSVC x64",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build-gui",
+      "vendor": {
+        "qt.io/QtCreator/1.0": {
+          "qt": "${sourceDir}/.tools/Qt/6.8.3/msvc2022_64/bin/qmake.exe",
+          "compiler": {
+            "cxx": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe",
+            "c": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe"
+          }
+        }
+      },
+      "cacheVariables": {
+        "IM_BUILD_GUI": "ON",
+        "IM_BUILD_SERVER": "ON",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/.tools/Qt/6.8.3/msvc2022_64"
+      }
+    }
+  ],
+  "buildPresets": [
+    {"name": "qt-release", "configurePreset": "qt-desktop", "configuration": "Release", "jobs": 4}
+  ]
+}

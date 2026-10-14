@@ -1,0 +1,9 @@
+{
+  "mode": "lan",
+  "host": "YOUR_SERVER_ADDRESS",
+  "port": 56110,
+  "tls": true,
+  "allowInsecureLoopback": false,
+  "autoStartLocalServer": false,
+  "caFile": "ca.pem"
+}

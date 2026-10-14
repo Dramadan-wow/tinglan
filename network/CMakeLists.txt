@@ -1,0 +1,8 @@
+add_library(im_network STATIC ProtocolHsx.cpp ProtocolHsx.h ChatClientHsx.cpp ChatClientHsx.h)
+set_target_properties(im_network PROPERTIES AUTOMOC ON)
+target_include_directories(im_network PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(im_network PUBLIC Qt6::Core Qt6::Network)
+target_compile_features(im_network PUBLIC cxx_std_17)
+if(MSVC)
+    target_compile_options(im_network PUBLIC /utf-8 /W4)
+endif()

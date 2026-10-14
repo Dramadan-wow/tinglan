@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/music"><file alias="mist.wav">music/mist.wav</file></qresource>
+  <qresource prefix="/art"><file alias="yvonne-social.png">art/yvonne-social.png</file><file alias="mist-river.png">art/mist-river-v3.png</file></qresource>
+  <qresource prefix="/icons"><file alias="chevron-down.xpm">icons/chevron-down.xpm</file><file alias="chevron-up.xpm">icons/chevron-up.xpm</file><file alias="check.xpm">icons/check.xpm</file></qresource>
+  <qresource prefix="/payment"><file alias="wechat.jpg">payment/wechat-receive.jpg</file></qresource>
+</RCC>

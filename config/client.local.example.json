@@ -1,0 +1,8 @@
+{
+  "mode": "local",
+  "host": "127.0.0.1",
+  "port": 56110,
+  "tls": false,
+  "allowInsecureLoopback": true,
+  "autoStartLocalServer": false
+}

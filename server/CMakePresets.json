@@ -1,0 +1,18 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "ubuntu-release",
+      "displayName": "Ubuntu Qt 6.8 server (set QT_ROOT first)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../build-server",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {"name": "ubuntu-release", "configurePreset": "ubuntu-release", "jobs": 4}
+  ]
+}

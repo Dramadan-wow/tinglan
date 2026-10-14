@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals"><ProjectGuid>{B7C8E1A7-3E49-4E11-8901-0A3B83D5B07E}</ProjectGuid><Keyword>Win32Proj</Keyword><RootNamespace>InstantMessengerHsx</RootNamespace><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v145</PlatformToolset><CharacterSet>Unicode</CharacterSet><UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries><UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup><OutDir>$(ProjectDir)bin\</OutDir><IntDir>$(ProjectDir)build\app\$(Configuration)\</IntDir><TargetName>im_system</TargetName></PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile><WarningLevel>Level4</WarningLevel><LanguageStandard>stdcpp17</LanguageStandard><ConformanceMode>true</ConformanceMode><SDLCheck>true</SDLCheck><PreprocessorDefinitions>_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalOptions>/utf-8 /MP4 %(AdditionalOptions)</AdditionalOptions><AdditionalIncludeDirectories>src\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
+    <Link><SubSystem>Console</SubSystem><AdditionalDependencies>ws2_32.lib;bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies><GenerateDebugInformation>true</GenerateDebugInformation></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\AdminManagerHsx.cpp" />
+    <ClCompile Include="src\AdminLogHsx.cpp" />
+    <ClCompile Include="src\PasswordHsx.cpp" />
+    <ClCompile Include="src\AdminScreenHsx.cpp" />
+    <ClCompile Include="src\AccountManagerHsx.cpp" />
+    <ClCompile Include="src\AccountScreenHsx.cpp" />
+    <ClCompile Include="src\ConsoleHsx.cpp" />
+    <ClCompile Include="src\DataStoreHsx.cpp" />
+    <ClCompile Include="src\DateHsx.cpp" />
+    <ClCompile Include="src\DemoDataHsx.cpp" />
+    <ClCompile Include="src\FriendHsx.cpp" />
+    <ClCompile Include="src\FriendManagerHsx.cpp" />
+    <ClCompile Include="src\FriendRequestHsx.cpp" />
+    <ClCompile Include="src\FriendScreenHsx.cpp" />
+    <ClCompile Include="src\GroupHsx.cpp" />
+    <ClCompile Include="src\GroupManagerHsx.cpp" />
+    <ClCompile Include="src\GroupPolicyHsx.cpp" />
+    <ClCompile Include="src\GroupScreenHsx.cpp" />
+    <ClCompile Include="src\MessageHsx.cpp" />
+    <ClCompile Include="src\MessageManagerHsx.cpp" />
+    <ClCompile Include="src\MessageScreenHsx.cpp" />
+    <ClCompile Include="src\NetChatHsx.cpp" />
+    <ClCompile Include="src\OtherUserHsx.cpp" />
+    <ClCompile Include="src\QQGroupHsx.cpp" />
+    <ClCompile Include="src\QQPolicyHsx.cpp" />
+    <ClCompile Include="src\QQUserHsx.cpp" />
+    <ClCompile Include="src\ScopeHsx.cpp" />
+    <ClCompile Include="src\ServiceAccountHsx.cpp" />
+    <ClCompile Include="src\StorageHsx.cpp" />
+    <ClCompile Include="src\TypesHsx.cpp" />
+    <ClCompile Include="src\UserHsx.cpp" />
+    <ClCompile Include="src\WeChatGroupHsx.cpp" />
+    <ClCompile Include="src\WeChatPolicyHsx.cpp" />
+    <ClCompile Include="src\WeChatUserHsx.cpp" />
+    <ClCompile Include="src\WeiboUserHsx.cpp" />
+    <ClCompile Include="src\main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\AdminManagerHsx.h" />
+    <ClInclude Include="src\AdminLogHsx.h" />
+    <ClInclude Include="src\PasswordHsx.h" />
+    <ClInclude Include="src\AdminScreenHsx.h" />
+    <ClInclude Include="src\AccountManagerHsx.h" />
+    <ClInclude Include="src\AccountScreenHsx.h" />
+    <ClInclude Include="src\ConsoleHsx.h" />
+    <ClInclude Include="src\DataStoreHsx.h" />
+    <ClInclude Include="src\DateHsx.h" />
+    <ClInclude Include="src\DemoDataHsx.h" />
+    <ClInclude Include="src\FriendHsx.h" />
+    <ClInclude Include="src\FriendManagerHsx.h" />
+    <ClInclude Include="src\FriendRequestHsx.h" />
+    <ClInclude Include="src\FriendScreenHsx.h" />
+    <ClInclude Include="src\GroupHsx.h" />
+    <ClInclude Include="src\GroupManagerHsx.h" />
+    <ClInclude Include="src\GroupPolicyHsx.h" />
+    <ClInclude Include="src\GroupScreenHsx.h" />
+    <ClInclude Include="src\MessageHsx.h" />
+    <ClInclude Include="src\MessageManagerHsx.h" />
+    <ClInclude Include="src\MessageScreenHsx.h" />
+    <ClInclude Include="src\NetChatHsx.h" />
+    <ClInclude Include="src\OtherUserHsx.h" />
+    <ClInclude Include="src\QQGroupHsx.h" />
+    <ClInclude Include="src\QQPolicyHsx.h" />
+    <ClInclude Include="src\QQUserHsx.h" />
+    <ClInclude Include="src\ScopeHsx.h" />
+    <ClInclude Include="src\ServiceAccountHsx.h" />
+    <ClInclude Include="src\StorageHsx.h" />
+    <ClInclude Include="src\TypesHsx.h" />
+    <ClInclude Include="src\UserHsx.h" />
+    <ClInclude Include="src\WeChatGroupHsx.h" />
+    <ClInclude Include="src\WeChatPolicyHsx.h" />
+    <ClInclude Include="src\WeChatUserHsx.h" />
+    <ClInclude Include="src\WeiboUserHsx.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
