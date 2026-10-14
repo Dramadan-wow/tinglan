@@ -1,4 +1,5 @@
-/* XPM: neutral source-build placeholder, never a payment QR code. */
+/* XPM */
+/* Neutral source-build placeholder, never a payment QR code. */
 static const char *payment_placeholder[] = {
 "8 8 2 1",
 ". c #EDF3EF",
