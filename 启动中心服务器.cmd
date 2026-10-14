@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-"%~dp0bin\im_server.exe" --config "%~dp0server\config\local.json"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_center.ps1" %*
 pause

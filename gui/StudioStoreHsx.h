@@ -2,6 +2,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QString>
+#include <QPixmap>
 namespace im {
 class AppSessionHsx;
 class StudioStoreHsx final {
@@ -14,6 +15,8 @@ public:
     QJsonObject membership(int user) const;
     QString choice(int user, const QString& kind) const;
     QString media(int user, const QString& kind) const;
+    QPixmap avatar(int user) const;
+    void syncLegacyAppearance();
     QString membershipText(int user) const;
     void setChoice(const QString& kind, const QString& value);
     void importImage(const QString& kind, const QString& file);

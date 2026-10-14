@@ -22,7 +22,7 @@ module=importlib.import_module({'workspace':'workspace_integration','social':'so
 OUT=n.ROOT/'tests/lan-output'/str(time.time_ns())/phase
 OUT.parent.mkdir(parents=True)
 n.OUT=w.OUT=module.OUT=OUT
-n.SERVER=n.ROOT/'build-package/v5.3.1/runtime/im_server.exe'
+n.SERVER=n.ROOT/('build-package/v'+(n.ROOT/'VERSION').read_text().strip()+'/runtime/im_server.exe')
 # Use deployed Schannel and SQL plugins, not SDK plugins.
 n.ENV['QT_PLUGIN_PATH']=str(n.SERVER.parent)
 certdir=OUT.parent/'tls';certdir.mkdir()

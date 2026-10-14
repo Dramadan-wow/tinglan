@@ -1,7 +1,7 @@
 """Explicit LAN deployment profile. Never edits original configuration or databases.
 
 Python 3 + cryptography are required only on A during configuration, not on B.
-Generated server/backup directories are private; only client/ may be sent to B.
+Generated server/backup directories are private; share the public connection code only.
 """
 from pathlib import Path
 import argparse
@@ -142,17 +142,13 @@ def prepare(config, host, listen, destination, runtime):
                     certificateFile='server.pem', keyFile='server.key')
     write_json(private/'server.json', settings)
     client = destination/'client';client.mkdir()
-    # Clean deployment runtime only; the friend's package has no server executable or credentials.
-    for source in runtime.iterdir():
-        if source.name in ('im_server.exe', 'client.json'): continue
-        if source.is_dir(): shutil.copytree(source, client/source.name)
-        else: shutil.copy2(source, client/source.name)
+    # Only public configuration is generated here. Friends install the generic client EXE.
     shutil.copy2(private/'ca.pem', client/'ca.pem')
     write_json(client/'client.json', dict(host=host, port=56110, tls=True,
         allowInsecureLoopback=False, autoStartLocalServer=False, caFile='ca.pem'))
     write_json(destination/'certificate-info.json', details)
     shutil.copy2(destination/'certificate-info.json', client/'certificate-info.json')
-    (client/'Start-Client.cmd').write_text('@echo off\r\ncd /d "%~dp0"\r\nstart "" "%~dp0im_desktop.exe" --client-config "%~dp0client.json"\r\n', encoding='ascii')
+    (destination/'Start-Owner-Client.cmd').write_text('@echo off\nchcp 65001 >nul\nstart "" "'+str(runtime/'im_desktop.exe')+'" --client-config "%~dp0client/client.json"\r\n', encoding='utf-8')
     # Console is intentional: A can see startup failure and stop gracefully with Ctrl+C.
     (destination/'Start-Server.ps1').write_text(
         "$ErrorActionPreference = 'Stop'\n"
@@ -164,9 +160,10 @@ def prepare(config, host, listen, destination, runtime):
         "& '"+str(runtime/'im_server.exe').replace("'", "''")+"' --config $config\n"
         "if ($LASTEXITCODE -ne 0) { throw \"Server exited: $LASTEXITCODE\" }\n", encoding='utf-8-sig')
     (destination/'Start-Server.cmd').write_text('@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Start-Server.ps1"\r\npause\r\n',encoding='ascii')
-    shutil.make_archive(str(destination/'Tinglan-LAN-Client'), 'zip', client)
+    from export_connection_code import encode
+    (destination/'connection-code.txt').write_text(encode(client/'client.json')+'\n',encoding='utf-8')
     print('Created LAN profile:', destination)
-    print('Send only Tinglan-LAN-Client.zip to B; never send server/ or backup/.')
+    print('Send the generic Client-Setup.exe and connection-code.txt to B; never send server/ or backup/.')
     print('CA file SHA256:', details['caFileSHA256'])
 
 
@@ -177,7 +174,7 @@ def main():
     p.add_argument('--host', help='Address entered by the user at deployment time; never auto-detected')
     p.add_argument('--listen', help='Numeric A interface address, or explicitly 0.0.0.0')
     p.add_argument('--out', type=Path)
-    p.add_argument('--runtime', type=Path, default=ROOT/'build-package/v5.3.1/runtime')
+    p.add_argument('--runtime', type=Path, default=ROOT/('build-package/v'+(ROOT/'VERSION').read_text().strip()+'/runtime'))
     a = p.parse_args()
     config = a.server_config.resolve()
     if a.backup_only:

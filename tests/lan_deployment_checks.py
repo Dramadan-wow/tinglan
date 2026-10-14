@@ -6,7 +6,7 @@ import network_integration as n
 sys.path.insert(0,str(n.ROOT/'scripts'))
 import prepare_lan as setup
 OUT=n.ROOT/'tests/lan-output'/str(time.time_ns())/'deployment';OUT.mkdir(parents=True)
-runtime=n.ROOT/'build-package/v5.3.1/runtime'
+version=(n.ROOT/'VERSION').read_text().strip();runtime=n.ROOT/f'build-package/v{version}/runtime';friend_runtime=runtime.parent/'client-runtime'
 checks=[]
 def check(ok,text):
     if not ok:raise AssertionError(text)
@@ -36,9 +36,9 @@ try:
     from cryptography import x509
     cert=x509.load_pem_x509_certificate((profile/'server/server.pem').read_bytes())
     check(str(cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value[0].value)=='127.0.0.1','Generated SAN matches supplied test address exactly')
-    with zipfile.ZipFile(profile/'Tinglan-LAN-Client.zip') as z:
-        check(not any(Path(name).suffix in ('.key','.sqlite','.db') or Path(name).name in ('im_server.exe','users.json') for name in z.namelist()),'Friend ZIP has no server, private key or database')
-        check(z.read('ca.pem')==(profile/'server/ca.pem').read_bytes(),'Friend ZIP carries matching public CA')
+    check(not (profile/'Tinglan-LAN-Client.zip').exists(),'Deployment no longer requires a per-server ZIP')
+    check(not any(p.suffix in ('.key','.sqlite','.db','.exe') for p in (profile/'client').rglob('*')),'Shared configuration contains no executable, private key or database')
+    check((profile/'connection-code.txt').read_text().startswith('TINGLAN1.'),'Text connection code created automatically')
     try:setup.prepare(config,'127.0.0.1','127.0.0.1',profile,runtime);refused=False
     except FileExistsError:refused=True
     check(refused,'Generator refuses to overwrite an existing profile')
@@ -52,7 +52,7 @@ try:
     local=dict(host='127.0.0.1',port=n.free_port(),tls=False,allowInsecureLoopback=True,autoStartLocalServer=True)
     setup.write_json(home/'client.json',local);original=(home/'client.json').read_bytes()
     # Main program, not just a session probe: explicit TLS profile suppresses bootstrap.
-    app=subprocess.Popen([str(profile/'client/im_desktop.exe'),'--client-config',str(profile/'client/client.json')],env=env,cwd=OUT,creationflags=subprocess.CREATE_NO_WINDOW)
+    app=subprocess.Popen([str(friend_runtime/'im_client.exe'),'--client-config',str(profile/'client/client.json')],env=env,cwd=OUT,creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         time.sleep(4);check(app.poll() is None,'Deployed friend client opens its actual login window')
         check(not (home/'server.json').exists() and not (home/'server').exists(),'Friend client does not create or start local database/server')

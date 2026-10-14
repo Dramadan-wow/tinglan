@@ -6,7 +6,7 @@ import hashlib,json,os,shutil,subprocess,zipfile
 ROOT=Path(__file__).resolve().parents[1]
 QT=ROOT/'.tools/Qt/6.8.3/msvc2022_64'
 CMAKE=ROOT/'.tools/python/cmake/data/bin/cmake.exe'
-VERSION='5.3.1'
+VERSION=(ROOT/'VERSION').read_text().strip()
 OUT=ROOT/f'dist/v{VERSION}'
 BUNDLE=ROOT/f'build-package/v{VERSION}/runtime'
 def run(args):
@@ -58,7 +58,22 @@ def main():
     run([CMAKE,'--build',build,'--config','Release','--parallel','4','--','/nodeReuse:false'])
     shutil.copy2(build/'Release/TinglanPortable.exe',OUT/f'Tinglan-{VERSION}-Portable.exe')
     run([ROOT/'.tools/packaging/InnoSetup/ISCC.exe',f'/DVersion={VERSION}',f'/DBundle={BUNDLE}',f'/DOutput={OUT}',ROOT/'packaging/setup.iss'])
-    for name in (f'Tinglan-{VERSION}-Portable.exe',f'Tinglan-{VERSION}-Setup.exe'):
+    # Ordinary client is a separately compiled program with no admin windows or local server.
+    client=ROOT/f'build-package/v{VERSION}/client-runtime'
+    client.mkdir(parents=True,exist_ok=True)
+    if any((client/x).exists() for x in ('data','server','.tools','users.json')):raise RuntimeError('Private data found in client staging')
+    for f in BUNDLE.iterdir():
+        if f.name in ('im_desktop.exe','im_server.exe','client.json','管理员使用说明.md','使用说明.md','双电脑局域网说明.md'):continue
+        if f.is_dir():shutil.copytree(f,client/f.name,dirs_exist_ok=True)
+        else:shutil.copy2(f,client/f.name)
+    shutil.copy2(ROOT/'build-gui/app/im_client.exe',client/'im_client.exe')
+    (client/'client.json').write_text(json.dumps(dict(host='',port=56110,tls=True,allowInsecureLoopback=False,autoStartLocalServer=False),indent=2),encoding='utf-8')
+    (client/'packaged.json').write_text(json.dumps(dict(version=VERSION,edition='client')),encoding='utf-8')
+    shutil.copy2(ROOT/'docs/普通客户端安装与连接码.md',client/'使用说明.md')
+    manifest={str(f.relative_to(client)).replace('\\','/'):hashlib.sha256(f.read_bytes()).hexdigest() for f in client.rglob('*') if f.is_file()}
+    (OUT/'client-runtime-manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+    run([ROOT/'.tools/packaging/InnoSetup/ISCC.exe',f'/DVersion={VERSION}',f'/DBundle={client}',f'/DOutput={OUT}',ROOT/'packaging/client_setup.iss'])
+    for name in (f'Tinglan-{VERSION}-Portable.exe',f'Tinglan-{VERSION}-Setup.exe',f'Tinglan-{VERSION}-Client-Setup.exe'):
         f=OUT/name;print(name,f.stat().st_size,hashlib.sha256(f.read_bytes()).hexdigest())
-    (OUT/'SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256((OUT/n).read_bytes()).hexdigest()+'  '+n for n in (f'Tinglan-{VERSION}-Portable.exe',f'Tinglan-{VERSION}-Setup.exe'))+'\n')
+    (OUT/'SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256((OUT/n).read_bytes()).hexdigest()+'  '+n for n in (f'Tinglan-{VERSION}-Portable.exe',f'Tinglan-{VERSION}-Setup.exe',f'Tinglan-{VERSION}-Client-Setup.exe'))+'\n')
 if __name__=='__main__':main()

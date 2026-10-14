@@ -4,7 +4,7 @@
 #include <QPainter>
 #include <QPainterPath>
 namespace im {
-AvatarHsx::AvatarHsx(const StudioStoreHsx& store,int user,const QString& name,int size,QWidget* parent):QLabel(parent),image_(store.media(user,"avatar")),name_(name),color_(ThemeHsx::color(user)),frame_(StudioStoreHsx::item("frame",store.choice(user,"frame"))) {setFixedSize(size,size);setAccessibleName(name+"的头像");}
+AvatarHsx::AvatarHsx(const StudioStoreHsx& store,int user,const QString& name,int size,QWidget* parent):QLabel(parent),image_(store.avatar(user)),name_(name),color_(ThemeHsx::color(user)),frame_(StudioStoreHsx::item("frame",store.choice(user,"frame"))) {setFixedSize(size,size);setAccessibleName(name+"的头像");setProperty("avatarUser",user);setProperty("customAvatar",!image_.isNull());}
 void AvatarHsx::paintEvent(QPaintEvent*) {
     QPainter p(this);p.setRenderHint(QPainter::Antialiasing);p.setRenderHint(QPainter::SmoothPixmapTransform);QRectF box=rect().adjusted(3,3,-3,-3);QPainterPath path;path.addEllipse(box);p.setClipPath(path);p.fillPath(path,QColor(color_));
     if(!image_.isNull()){const auto scaled=image_.scaled(box.size().toSize(),Qt::KeepAspectRatioByExpanding,Qt::SmoothTransformation);p.drawPixmap(box,scaled,QRectF((scaled.width()-box.width())/2,(scaled.height()-box.height())/2,box.width(),box.height()));}

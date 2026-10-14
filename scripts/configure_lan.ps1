@@ -1,4 +1,4 @@
-param([string]$ServerAddress, [string]$ListenAddress, [string]$Python)
+﻿param([string]$ServerAddress, [string]$ListenAddress, [string]$Python)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 if (!$ServerAddress) { $ServerAddress = Read-Host 'Enter computer A IPv4 or DNS name (no automatic detection)' }
@@ -15,4 +15,4 @@ if ($ListenAddress) { $arguments += @('--listen', $ListenAddress) }
 $env:PYTHONIOENCODING = 'utf-8'
 & $Python @arguments
 if ($LASTEXITCODE -ne 0) { throw 'LAN configuration failed. Original configuration and database were not replaced.' }
-Write-Host 'Open the generated profile. Start-Server.cmd is for A; send only Tinglan-LAN-Client.zip to B.'
+Write-Host 'Open the generated profile. Start-Server.cmd is for A; send Client-Setup.exe and connection-code.txt to B.'

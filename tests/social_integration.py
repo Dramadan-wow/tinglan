@@ -64,7 +64,7 @@ def main():
     server=n.start_server(config,'server-restart');b.event('state',lambda e:'消息实时同步' in e['text']);c.event('state',lambda e:'消息实时同步' in e['text'])
     active=b.snapshot(lambda s:s['membership']['tier']==2)
     check(active['membership']['expires']>time.time()+29*86400,'Approved tier and 30-day validity synchronized after restart')
-    b.command('style',button='bubble_candy');check(b.event('style')['bubble']=='candy','Member-only bubble unlocked and persisted after approval')
+    b.command('style',button='bubble_candy');b.snapshot(lambda s:s.get('appearances',{}).get('10002',{}).get('bubble')=='candy');check(True,'Member-only bubble unlocked and persisted after approval')
     c.snapshot(lambda s:any('城市公园' in m['text'] for m in s['directMessages']) and 10002 in s['follows']);check(True,'Images, private messages and follows survive restart')
     b.command('shot',page=7,name='membership.png');b.event('screenshot')
     b.rpc('account.close',dict(service=2));b.snapshot(lambda s:not s['weibo'] and not s['directMessages']);c.rpc('weibo.dm.send',dict(target=10002,post=post['id'],text='服务已关闭'),False)

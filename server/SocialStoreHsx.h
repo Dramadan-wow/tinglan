@@ -19,6 +19,7 @@ private:
     bool visible(int actor,int author,const QString& channel) const;
     QJsonArray posts(int actor,const QString& channel) const;
     QJsonObject member(int actor) const;
+    QJsonObject appearances() const;
     QSqlDatabase db_;
     const DataStoreHsx& data_;
 };

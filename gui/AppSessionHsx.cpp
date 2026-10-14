@@ -10,7 +10,11 @@ namespace im {
 AppSessionHsx::AppSessionHsx(std::filesystem::path file, QObject* parent)
     : QObject(parent), file_(std::move(file)), accounts_(data_), admins_(data_), friends_(data_), groups_(data_), messages_(data_), studio_(*this,QString::fromStdWString(file_.wstring())) {
     if (std::filesystem::exists(file_)) StorageHsx::load(data_, file_);
+
+#ifndef IM_USER_CLIENT
     admins_.initialize();
+#endif
+
     if (data_.dirty()) StorageHsx::save(data_, file_);
 }
 QString AppSessionHsx::q(const std::string& value) { return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size())); }
@@ -32,12 +36,17 @@ bool AppSessionHsx::login(int user, ServiceHsx type, const QString& password) {
     } catch (const std::exception& error) { save(); emit failed(q(error.what())); return false; }
 }
 bool AppSessionHsx::loginAdmin(const QString& name, const QString& password) {
+#ifdef IM_USER_CLIENT
+    Q_UNUSED(name);Q_UNUSED(password);emit failed("普通客户端不支持管理登录");return false;
+#else
     if(remoteConfigured_){loginRemoteAdmin(name,password);return false;}
     try {
         admins_.login(s(name), s(password));
         if (user_) accounts_.logout(user_);
         user_ = 0; service_ = ServiceHsx::Count; save(); emit changed(); return true;
     } catch (const std::exception& error) { save(); emit failed(q(error.what())); return false; }
+
+#endif
 }
 bool AppSessionHsx::loginNickname(const QString& nickname,ServiceHsx type,const QString& password) {
     try{return login(accounts_.findByNickname(s(nickname.trimmed())),type,password);}
@@ -65,7 +74,7 @@ bool AppSessionHsx::mutate(const std::function<void()>& action, const QString& s
         return true; // 保存失败时业务修改仍在内存中，不能重复提交同一操作。
     } catch (const std::exception& error) { emit failed(q(error.what())); return false; }
 }
-bool AppSessionHsx::personalize(const std::function<void()>& action,const QString& success){try{require(signedIn(),"请先登录");action();emit changed();if(!success.isEmpty())emit succeeded(success);return true;}catch(const std::exception& e){emit failed(q(e.what()));return false;}}
+bool AppSessionHsx::personalize(const std::function<void()>& action,const QString& success){try{require(signedIn(),"请先登录");const auto before=pendingCommands_.size();action();if(pendingCommands_.size()==before){emit changed();if(!success.isEmpty())emit succeeded(success);}return true;}catch(const std::exception& e){emit failed(q(e.what()));return false;}}
 bool AppSessionHsx::save() {
     if(remote())return true;
     try { if (data_.dirty()) StorageHsx::save(data_, file_); return true; }
@@ -96,6 +105,9 @@ int AppSessionHsx::requestCount() const {
 void AppSessionHsx::configureRemote(const QString& filename){
     QFile file(filename);require(file.open(QIODevice::ReadOnly),"无法读取后台连接配置 client.json");
     const auto doc=QJsonDocument::fromJson(file.readAll());require(doc.isObject(),"后台连接配置格式无效");const auto config=doc.object();
+#ifdef IM_USER_CLIENT
+    require(config["tls"].toBool()&&!config["autoStartLocalServer"].toBool()&&!config["allowInsecureLoopback"].toBool(),"普通客户端必须严格验证 TLS 证书");
+#endif
     require(config["host"].isString()&&!config["host"].toString().trimmed().isEmpty()&&config["port"].toInt()>0&&config["port"].toInt()<=65535,"后台连接配置不完整");
     remoteOptions_.host=config["host"].toString();remoteOptions_.port=quint16(config["port"].toInt());remoteOptions_.tls=config.value("tls").toBool(true);remoteOptions_.allowInsecureLoopback=config["allowInsecureLoopback"].toBool();
     if(!config["caFile"].toString().isEmpty())remoteOptions_.caFile=QDir(QFileInfo(filename).absolutePath()).absoluteFilePath(config["caFile"].toString());
@@ -116,6 +128,7 @@ void AppSessionHsx::configureRemote(const QString& filename){
             lastNickname_=q(data_.user(user_).name());remoteClient_.updateNickname(lastNickname_);QSettings().setValue("lastRemoteNickname",lastNickname_);
             social_=snapshot;feed_=snapshot["feed"].toArray();readPending_.clear();emit changed();
             if(remoteLoginPending_){remoteLoginPending_=false;emit remoteLoginFinished(true);}
+            if(!legacyAppearanceAttempted_){legacyAppearanceAttempted_=true;studio_.syncLegacyAppearance();}
         }catch(const std::exception& e){remoteClient_.stop();emit failed(q(e.what()));if(remoteLoginPending_){remoteLoginPending_=false;emit remoteLoginFinished(false);}}
     });
     connect(&remoteClient_,&net::ChatClientHsx::workspaceResult,this,[this](const QString& id,const QJsonObject& result){
@@ -125,14 +138,22 @@ void AppSessionHsx::configureRemote(const QString& filename){
     });
 }
 void AppSessionHsx::loginRemote(const QString& nickname,ServiceHsx service,const QString& password,bool registration){
+    legacyAppearanceAttempted_=false;
     admins_.logout();remoteAdmin_=false;remoteOptions_.administrator=false;remoteLoginPending_=true;service_=service;remoteOptions_.username=nickname.trimmed();remoteOptions_.password=password;remoteOptions_.service=int(service);remoteOptions_.registerAccount=registration;remoteClient_.start(remoteOptions_);remoteOptions_.password.clear();
 }
 void AppSessionHsx::loginRemoteAdmin(const QString& name,const QString& password){
+#ifdef IM_USER_CLIENT
+    Q_UNUSED(name);Q_UNUSED(password);emit failed("普通客户端不支持管理登录");emit remoteLoginFinished(false);return;
+#else
     admins_.logout();remoteAdmin_=false;user_=0;service_=ServiceHsx::Count;remoteOptions_.administrator=true;remoteLoginPending_=true;
     remoteOptions_.username=name.trimmed();remoteOptions_.password=password;remoteOptions_.service=0;remoteOptions_.registerAccount=false;
     remoteClient_.start(remoteOptions_);remoteOptions_.password.clear();
+#endif
 }
 bool AppSessionHsx::command(const QString& op,QJsonObject arguments,const std::function<void()>& local,const QString& success){
+#ifdef IM_USER_CLIENT
+    if(op.startsWith("admin.")){emit failed("普通客户端不支持管理操作");return false;}
+#endif
     if(!remote())return mutate(local?local:[]{},success);
     if(!connected()){emit failed("尚未连接服务器，此操作未发送");return false;}
     arguments["op"]=op;if(!arguments.contains("service"))arguments["service"]=int(service_);const auto id=remoteClient_.workspaceCommand(arguments);if(id.isEmpty())return false;

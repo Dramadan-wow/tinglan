@@ -10,6 +10,7 @@ class ConnectionDialogHsx final : public QDialog {
 public:
     explicit ConnectionDialogHsx(const QString& currentFile, QWidget* parent=nullptr);
     QString savedFile() const { return savedFile_; }
+    bool importCode(const QString& text);
 private:
     void updateMode();
     QJsonObject configuration() const;
@@ -21,6 +22,7 @@ private:
     QWidget* caBox_;
     QJsonObject originalLocal_;
     QString savedFile_, remoteHost_, remoteCa_;
+    QString importedCa_,importedCaPath_;
     int remotePort_=56110;
     bool wasLocal_=false;
 };

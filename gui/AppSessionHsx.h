@@ -82,6 +82,7 @@ private:
     QJsonArray feed_;
     QJsonObject social_;
     QString lastNickname_,connectionStatus_="未连接";
+    bool legacyAppearanceAttempted_=false;
     bool remoteConfigured_=false,remoteLoginPending_=false,remoteAdmin_=false;
     int user_ = 0;
     ServiceHsx service_ = ServiceHsx::Count;

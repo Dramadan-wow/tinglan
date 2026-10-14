@@ -5,7 +5,7 @@
 #include <cmath>
 namespace im {
 BubbleHsx::BubbleHsx(const QString& text,const QJsonObject& style,bool mine,QWidget* parent):QLabel(text,parent),style_(style),mine_(mine),timer_(new QTimer(this)) {
-    if(style_.value("id")=="jade"){style_["a"]=mine?"#b9dfff":"#ffffff";style_["b"]=mine?"#cee8ff":"#ffffff";style_["ink"]="#233650";}
+    if(style_.value("id")=="jade"){style_["a"]="#b9dfff";style_["b"]="#cee8ff";style_["ink"]="#233650";}
     setTextFormat(Qt::PlainText);setWordWrap(true);setTextInteractionFlags(Qt::TextSelectableByMouse);setContentsMargins(15,12,15,12);
     setStyleSheet("background:transparent;border:none;font-size:13px;color:"+style_.value("ink").toString("#304d35")+";");
     timer_->setInterval(80);connect(timer_,&QTimer::timeout,this,[this]{phase_+=.1;update();});setProperty("bubbleStyle",style.value("id").toString());

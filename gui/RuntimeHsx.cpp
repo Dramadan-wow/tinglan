@@ -27,6 +27,9 @@ RuntimeHsx prepareRuntime(const QString& configOverride){
     // An explicit profile never replaces the user's existing local-mode configuration.
     if(configOverride.isEmpty()&&!QFile::exists(cfg))require(QFile::copy(app+"/client.json",cfg),"无法创建连接配置");
     QFile input(cfg);require(input.open(QIODevice::ReadOnly),"无法读取连接配置");const auto c=QJsonDocument::fromJson(input.readAll()).object();
+#ifdef IM_USER_CLIENT
+    require(c["tls"].toBool()&&!c["autoStartLocalServer"].toBool()&&!c["allowInsecureLoopback"].toBool(),"普通客户端必须使用 TLS 中心服务器配置");
+#else
     if(c["autoStartLocalServer"].toBool()&&c["host"]=="127.0.0.1"){
         const auto serverConfig=root+"/server.json";
         if(!QFile::exists(serverConfig)){QSaveFile out(serverConfig);require(out.open(QIODevice::WriteOnly),"无法写入本机服务配置");const auto json=QJsonDocument(QJsonObject{{"listenAddress","127.0.0.1"},{"port",c["port"]},{"tls",false},{"allowInsecureLoopback",true},{"usersFile",root+"/server/users.json"},{"workspaceFile",root+"/server/workspace.sqlite"},{"idleExitMs",60000}}).toJson();require(out.write(json)==json.size()&&out.commit(),"无法保存本机服务配置");}
@@ -40,6 +43,7 @@ RuntimeHsx prepareRuntime(const QString& configOverride){
         require(QProcess::startDetached(app+"/im_server",{"--config",serverConfig},app),"无法启动本机服务器");
 #endif
     }
+#endif
     return {root+"/client-data.txt",cfg};
 }
 }

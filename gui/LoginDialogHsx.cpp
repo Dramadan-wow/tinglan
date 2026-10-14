@@ -45,11 +45,22 @@ LoginDialogHsx::LoginDialogHsx(AppSessionHsx& session,QWidget* parent,bool admin
     auto* overline=new QLabel("有 人 倾 听  /  有 处 心 安");overline->setStyleSheet("color:#9ca98b;font-size:10px;letter-spacing:1px;");right->addWidget(overline);right->addSpacing(6);
     title_=new QLabel;title_->setStyleSheet("font-size:29px;color:#2e472f;font-weight:600;");right->addWidget(title_);
     intro_=new QLabel;intro_->setWordWrap(true);intro_->setStyleSheet("font-size:12px;color:#8c9a7d;");right->addWidget(intro_);right->addSpacing(17);
-    role_=new QComboBox(this);role_->setObjectName("loginRole");role_->addItems({"普通用户","系统管理员"});role_->hide();
+    role_=new QComboBox(this);role_->setObjectName("loginRole");
+#ifdef IM_USER_CLIENT
+    role_->addItem("普通用户");
+#else
+    role_->addItems({"普通用户","系统管理员"});
+#endif
+    role_->hide();
     auto* selector=new QFrame;selector->setObjectName("roleSelector");auto* tabs=new QHBoxLayout(selector);tabs->setContentsMargins(4,4,4,4);tabs->setSpacing(4);
-    auto* roles=new QButtonGroup(this);userRole_=new QPushButton("用户登录");adminRole_=new QPushButton("管理空间");
-    for(auto* button:{userRole_,adminRole_}){button->setCheckable(true);button->setObjectName("roleButton");roles->addButton(button);tabs->addWidget(button);}
-    userRole_->setIcon(IconHsx::get("user","#8d9b83","#355c3d"));adminRole_->setIcon(IconHsx::get("shield","#8d9b83","#355c3d"));right->addWidget(selector);right->addSpacing(13);
+    auto* roles=new QButtonGroup(this);userRole_=new QPushButton("用户登录");
+#ifdef IM_USER_CLIENT
+    adminRole_=nullptr;
+#else
+    adminRole_=new QPushButton("管理空间");
+#endif
+    for(auto* button:{userRole_,adminRole_}){if(!button)continue;button->setCheckable(true);button->setObjectName("roleButton");roles->addButton(button);tabs->addWidget(button);}
+    userRole_->setIcon(IconHsx::get("user","#8d9b83","#355c3d"));if(adminRole_)adminRole_->setIcon(IconHsx::get("shield","#8d9b83","#355c3d"));right->addWidget(selector);right->addSpacing(13);
     userLabel_=new QLabel;userLabel_->setObjectName("fieldLabel");right->addWidget(userLabel_);
     user_=new QLineEdit;user_->setObjectName("loginUser");user_->setMaxLength(60);user_->setClearButtonEnabled(true);user_->addAction(IconHsx::get("user","#9aa78c"),QLineEdit::LeadingPosition);right->addWidget(user_);right->addSpacing(7);
     auto* credentials=new QHBoxLayout;credentials->setSpacing(14);serviceBox_=new QWidget;serviceBox_->setFixedWidth(120);auto* svc=new QVBoxLayout(serviceBox_);svc->setContentsMargins(0,0,0,0);svc->setSpacing(8);
@@ -64,15 +75,18 @@ LoginDialogHsx::LoginDialogHsx(AppSessionHsx& session,QWidget* parent,bool admin
     if(settings){auto* connection=new QPushButton("服务器连接设置");connection->setObjectName("connectionSettings");connection->setIcon(IconHsx::get("settings","#718769"));right->addWidget(connection);connect(connection,&QPushButton::clicked,this,[this,settings,submit]{session_.logout();submit->setEnabled(true);register_->setEnabled(true);error_->clear();if(settings())done(2);});}
     hint_=new QLabel;hint_->setWordWrap(true);hint_->setStyleSheet("background:#f2f5ec;color:#8c9b7a;border:1px solid #e8edde;border-radius:10px;padding:12px;font-size:10px;");right->addWidget(hint_);
     auto* signature=new QLabel("听澜  ·  让每一次相逢都有回响");signature->setAlignment(Qt::AlignCenter);signature->setStyleSheet("color:#abb59b;font-size:9px;padding-top:8px;");right->addWidget(signature);outer->addWidget(body,1);
-    connect(userRole_,&QPushButton::clicked,this,[this]{role_->setCurrentIndex(0);});connect(adminRole_,&QPushButton::clicked,this,[this]{role_->setCurrentIndex(1);});
+    connect(userRole_,&QPushButton::clicked,this,[this]{role_->setCurrentIndex(0);});if(adminRole_)connect(adminRole_,&QPushButton::clicked,this,[this]{role_->setCurrentIndex(1);});
     connect(reveal_,&QAction::toggled,this,[this](bool show){password_->setEchoMode(show?QLineEdit::Normal:QLineEdit::Password);reveal_->setIcon(IconHsx::get(show?"eye-off":"eye","#98a68a"));reveal_->setToolTip(show?"隐藏密码":"显示密码");});
     connect(user_,&QLineEdit::textChanged,this,[this]{services();error_->clear();});connect(submit,&QPushButton::clicked,this,[this]{login();});connect(password_,&QLineEdit::returnPressed,this,[this]{login();});
     connect(register_,&QPushButton::clicked,this,[this]{registerUser();});connect(role_,&QComboBox::currentIndexChanged,this,[this]{roleChanged();});connect(&session_,&AppSessionHsx::failed,this,[this](const QString& message){error_->setText(message);});
     connect(&session_,&AppSessionHsx::remoteLoginFinished,this,[this,submit](bool ok){submit->setEnabled(true);register_->setEnabled(true);if(ok)accept();});
     role_->setCurrentIndex(admin?1:0);roleChanged();password_->setFocus();
+#ifdef IM_USER_CLIENT
+    role_->removeItem(1);role_->setCurrentIndex(0);selector->hide();
+#endif
 }
 void LoginDialogHsx::roleChanged() {
-    const bool admin=role_->currentIndex()==1;userRole_->setChecked(!admin);adminRole_->setChecked(admin);serviceBox_->setVisible(!admin);linked_->setVisible(!admin);register_->setVisible(!admin);
+    const bool admin=role_->currentIndex()==1;userRole_->setChecked(!admin);if(adminRole_)adminRole_->setChecked(admin);serviceBox_->setVisible(!admin);linked_->setVisible(!admin);register_->setVisible(!admin);
     title_->setText(admin?"管理空间":"欢迎归来");intro_->setText(admin?"用心守护每一位用户的相逢。":"用熟悉的昵称，开启今天的故事。");userLabel_->setText(admin?"管理员账号":"你的昵称");
     user_->setPlaceholderText(admin?"管理员账号":"输入你的昵称");user_->setAccessibleName(admin?"管理员账号":"昵称");user_->setText(admin?AppSessionHsx::q(session_.admins().name()):session_.lastNickname());
     reveal_->setChecked(false);password_->clear();error_->clear();hint_->setText(admin?"初始账号  admin  /  admin123456\n进入后台后可修改管理员密码。":"使用已注册的昵称登录；新用户请先注册。");if(session_.remote()){hint_->setText(admin?"在线管理：查看同一服务器的账号、登录记录与会员订单。":"账号、私聊、群聊和微博广场由同一服务器同步。");linked_->hide();}services();

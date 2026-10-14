@@ -71,3 +71,7 @@ __pycache__/
 /docs/三平台清理-v5.3.md
 /docs/暂停续作记录-*.md
 /docs/账号与实验数据恢复记录-*.md
+
+# Isolated appearance and installer validation artifacts
+/tests/appearance-output/
+/tests/client-installer-output/

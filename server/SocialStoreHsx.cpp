@@ -1,5 +1,7 @@
 #include "SocialStoreHsx.h"
+#include "AppearanceHsx.h"
 #include <QSqlQuery>
+#include <QJsonDocument>
 #include <QSqlRecord>
 #include <QDateTime>
 #include <QBuffer>
@@ -21,6 +23,11 @@ QString content(const QJsonValue& v,int limit,bool empty=false){
 const int prices[]={0,1,6,128,648},days[]={0,7,30,365,0};
 }
 void SocialStoreHsx::migrate(){
+    if(!db_.tables().contains("appearances")){
+        auto existing=query(db_,"SELECT COUNT(*) FROM state");existing.next();const bool populated=existing.value(0).toInt()>0;existing.finish();
+        if(populated){const auto backup=db_.databaseName()+".before-appearance-v5.4.sqlite";
+            if(!QFileInfo::exists(backup))query(db_,"VACUUM INTO ?",{backup});}
+    }
     const auto columns=db_.record("posts");
     if(!columns.contains("channel")){const auto backup=db_.databaseName()+".before-social-v5.sqlite";if(!QFileInfo::exists(backup))query(db_,"VACUUM INTO ?",{backup});}
     if(!columns.contains("channel"))query(db_,"ALTER TABLE posts ADD COLUMN channel TEXT NOT NULL DEFAULT 'moments'");
@@ -31,6 +38,7 @@ void SocialStoreHsx::migrate(){
         "CREATE TABLE IF NOT EXISTS direct_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,sender INTEGER,recipient INTEGER,post INTEGER,text TEXT,created INTEGER,is_read INTEGER DEFAULT 0)",
         "CREATE INDEX IF NOT EXISTS dm_participants ON direct_messages(sender,recipient,id)",
         "CREATE TABLE IF NOT EXISTS memberships(actor INTEGER PRIMARY KEY,tier INTEGER,expires INTEGER)",
+        "CREATE TABLE IF NOT EXISTS appearances(actor INTEGER PRIMARY KEY,profile BLOB NOT NULL)",
         "CREATE TABLE IF NOT EXISTS membership_orders(id TEXT PRIMARY KEY,actor INTEGER,tier INTEGER,price INTEGER,reference TEXT,status TEXT,created INTEGER,note TEXT DEFAULT '')",
         "CREATE UNIQUE INDEX IF NOT EXISTS one_pending_order ON membership_orders(actor) WHERE status='pending'",
         "CREATE UNIQUE INDEX IF NOT EXISTS one_payment_reference ON membership_orders(note) WHERE status='approved'"
@@ -71,16 +79,56 @@ QJsonArray SocialStoreHsx::orders(int actor)const{
     auto q=query(db_,actor?"SELECT id,actor,tier,price,reference,status,created,note,reviewer,reviewed FROM membership_orders WHERE actor=? ORDER BY created DESC LIMIT 100":"SELECT id,actor,tier,price,reference,status,created,note,reviewer,reviewed FROM membership_orders ORDER BY (status='pending') DESC,created DESC LIMIT 2000",actor?QVariantList{actor}:QVariantList{});
     QJsonArray out;while(q.next())out.append(QJsonObject{{"id",q.value(0).toString()},{"user",q.value(1).toInt()},{"tier",q.value(2).toInt()},{"price",q.value(3).toInt()},{"reference",q.value(4).toString()},{"status",q.value(5).toString()},{"created",q.value(6).toLongLong()},{"note",q.value(7).toString()},{"reviewer",q.value(8).toString()},{"reviewed",q.value(9).toLongLong()}});return out;
 }
+QJsonObject SocialStoreHsx::appearances()const{
+    QJsonObject out;auto q=query(db_,"SELECT actor,profile FROM appearances");
+    while(q.next()){
+        const int actor=q.value(0).toInt();if(!data_.users().count(actor))continue;
+        auto p=QJsonDocument::fromJson(q.value(1).toByteArray()).object();
+        const int tier=member(actor)["tier"].toInt();
+        for(const auto* kind:{"bubble","frame","pet"}){
+            const auto chosen=AppearanceHsx::item(kind,p[kind].toString());
+            if(chosen.isEmpty()||chosen["tier"].toInt()>tier)p[kind]=AppearanceHsx::catalog(kind).first().toObject()["id"];
+        }
+        // Only public appearance is published, never another user's orders or expiry date.
+        p["tier"]=tier;out[QString::number(actor)]=p;
+    }return out;
+}
 QJsonObject SocialStoreHsx::snapshot(int actor)const{
     QJsonArray follows,blocks,dms;auto f=query(db_,"SELECT target FROM follows WHERE actor=?",{actor});while(f.next())follows.append(f.value(0).toInt());
     auto b=query(db_,"SELECT target FROM social_blocks WHERE actor=?",{actor});while(b.next())blocks.append(b.value(0).toInt());
     auto q=query(db_,"SELECT id,sender,recipient,post,text,created,is_read FROM direct_messages WHERE sender=? OR recipient=? ORDER BY id DESC LIMIT 200",{actor,actor});
     while(q.next())dms.append(QJsonObject{{"id",q.value(0).toString()},{"sender",q.value(1).toInt()},{"recipient",q.value(2).toInt()},{"post",q.value(3).toString()},{"text",q.value(4).toString()},{"created",q.value(5).toLongLong()},{"read",q.value(6).toBool()}});
     const bool enabled=hasWeibo(actor);
-    return {{"feed",posts(actor,"moments")},{"weibo",enabled?posts(actor,"weibo"):QJsonArray{}},{"follows",enabled?follows:QJsonArray{}},{"socialBlocks",enabled?blocks:QJsonArray{}},{"directMessages",enabled?dms:QJsonArray{}},{"membership",member(actor)},{"membershipOrders",orders(actor)}};
+    return {{"appearances",appearances()},{"feed",posts(actor,"moments")},{"weibo",enabled?posts(actor,"weibo"):QJsonArray{}},{"follows",enabled?follows:QJsonArray{}},{"socialBlocks",enabled?blocks:QJsonArray{}},{"directMessages",enabled?dms:QJsonArray{}},{"membership",member(actor)},{"membershipOrders",orders(actor)}};
 }
 bool SocialStoreHsx::command(int actor,const QJsonObject& a,QJsonObject& result){
     const auto op=a["op"].toString();const auto now=QDateTime::currentSecsSinceEpoch();
+    if(op=="appearance.update"){
+        auto q=query(db_,"SELECT profile FROM appearances WHERE actor=?",{actor});
+        const bool exists=q.next();
+        if(a["createOnly"].toBool()&&exists)return true;
+        auto p=exists?QJsonDocument::fromJson(q.value(0).toByteArray()).object():QJsonObject{};
+        const auto patch=a["profile"].toObject();require(a["profile"].isObject(),"装扮格式无效");
+        for(auto it=patch.begin();it!=patch.end();++it){
+            const auto kind=it.key();require(QStringList{"bubble","frame","pet","avatar"}.contains(kind)&&it.value().isString(),"不支持的装扮字段");
+            if(kind!="avatar"){
+                const auto style=AppearanceHsx::item(kind,it.value().toString());require(!style.isEmpty(),"装扮不存在");
+                require(style["tier"].toInt()<=member(actor)["tier"].toInt(),"此装扮需开通对应会员后使用");p[kind]=it.value();
+            }else{
+                const auto encoded=it.value().toString().toLatin1();require(encoded.size()<=32768,"头像超过上传限制");
+                if(encoded.isEmpty()){p.remove("avatar");continue;}
+                auto bytes=QByteArray::fromBase64(encoded);require(bytes.toBase64()==encoded&&bytes.size()<=24576,"头像编码无效");
+                QBuffer input(&bytes);input.open(QIODevice::ReadOnly);QImageReader reader(&input);
+                const auto size=reader.size();require((reader.format()=="jpeg"||reader.format()=="png")&&size.isValid()&&size.width()<=512&&size.height()<=512,"头像格式或尺寸无效");
+                const auto image=reader.read();require(!image.isNull(),"无法读取头像");
+                QByteArray clean;QBuffer output(&clean);output.open(QIODevice::WriteOnly);
+                require(image.scaled(192,192,Qt::KeepAspectRatio,Qt::SmoothTransformation).save(&output,"JPEG",75)&&clean.size()<=24576,"头像转换失败");
+                p[kind]=QString::fromLatin1(clean.toBase64());
+            }
+        }
+        // actor is bound to the authenticated connection; no target/sender ID is trusted.
+        query(db_,"INSERT INTO appearances(actor,profile) VALUES(?,?) ON CONFLICT(actor) DO UPDATE SET profile=excluded.profile",{actor,QJsonDocument(p).toJson(QJsonDocument::Compact)});return true;
+    }
     if(op.startsWith("weibo."))require(hasWeibo(actor),"请先在账号页面开通微博服务");
     if(op=="feed.publish"){
         const auto channel=a.value("channel").toString("moments");require(channel=="moments"||channel=="weibo","动态频道无效");

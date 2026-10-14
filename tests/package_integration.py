@@ -4,7 +4,7 @@ from pathlib import Path
 import network_integration as n
 import workspace_integration as w
 ROOT=n.ROOT;OUT=ROOT/'tests/package-output'/str(time.time_ns());OUT.mkdir(parents=True)
-VERSION=os.environ.get('TINGLAN_TEST_VERSION','5.3.1');DIST=ROOT/f'dist/v{VERSION}';checks=[]
+VERSION=os.environ.get('TINGLAN_TEST_VERSION',(ROOT/'VERSION').read_text().strip());DIST=ROOT/f'dist/v{VERSION}';checks=[]
 env={k.upper():v for k,v in os.environ.items() if not k.upper().startswith('QT_')}
 env['PATH']=os.pathsep.join([env['SYSTEMROOT'],str(Path(env['SYSTEMROOT'])/'System32')])
 env['TINGLAN_HOME']=str(OUT/'userdata');env['LOCALAPPDATA']=str(OUT/'appdata')
