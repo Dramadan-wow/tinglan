@@ -30,6 +30,7 @@ def main():
     shutil.copy2(ROOT/'docs/听澜5使用说明.md',BUNDLE/'使用说明.md')
     shutil.copy2(ROOT/'docs/管理员使用说明.md',BUNDLE/'管理员使用说明.md')
     shutil.copy2(ROOT/'docs/双电脑局域网-v5.3.1.md',BUNDLE/'双电脑局域网说明.md')
+    shutil.copy2(ROOT/'docs/自动更新.md',BUNDLE/'自动更新说明.md')
     licenses=BUNDLE/'licenses';licenses.mkdir(exist_ok=True)
     for sbom in (QT/'sbom').glob('*.spdx.json'):
         if sbom.name.startswith(('qtbase-','qtmultimedia-')):shutil.copy2(sbom,licenses/sbom.name)
@@ -73,6 +74,10 @@ def main():
     manifest={str(f.relative_to(client)).replace('\\','/'):hashlib.sha256(f.read_bytes()).hexdigest() for f in client.rglob('*') if f.is_file()}
     (OUT/'client-runtime-manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     run([ROOT/'.tools/packaging/InnoSetup/ISCC.exe',f'/DVersion={VERSION}',f'/DBundle={client}',f'/DOutput={OUT}',ROOT/'packaging/client_setup.iss'])
+    installer=OUT/f'Tinglan-{VERSION}-Client-Setup.exe'
+    (OUT/'client-update.json').write_text(json.dumps(dict(schema=1,edition='client',platform='windows-x64',version=VERSION,
+        size=installer.stat().st_size,sha256=hashlib.sha256(installer.read_bytes()).hexdigest(),
+        notes=(ROOT/'packaging/update-notes.txt').read_text(encoding='utf-8').strip()),ensure_ascii=False,indent=2),encoding='utf-8')
     for name in (f'Tinglan-{VERSION}-Portable.exe',f'Tinglan-{VERSION}-Setup.exe',f'Tinglan-{VERSION}-Client-Setup.exe'):
         f=OUT/name;print(name,f.stat().st_size,hashlib.sha256(f.read_bytes()).hexdigest())
     (OUT/'SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256((OUT/n).read_bytes()).hexdigest()+'  '+n for n in (f'Tinglan-{VERSION}-Portable.exe',f'Tinglan-{VERSION}-Setup.exe',f'Tinglan-{VERSION}-Client-Setup.exe'))+'\n')

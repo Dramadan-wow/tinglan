@@ -53,6 +53,7 @@ int main(int argc,char** argv){
         options.port=quint16(integer(config,"port",56000,0,65535));options.tls=boolean(config,"tls",true);options.allowInsecureLoopback=boolean(config,"allowInsecureLoopback",false);
         options.maxConnections=integer(config,"maxConnections",128,1,512);options.idleTimeoutMs=integer(config,"idleTimeoutMs",60000,2000,300000);options.loginTimeoutMs=integer(config,"loginTimeoutMs",30000,2000,60000);
         if(options.tls){options.certificateFile=path("certificateFile");options.keyFile=path("keyFile");}
+        options.updatesDirectory=config.contains("updatesDirectory")?path("updatesDirectory"):QDir(configPath.absolutePath()).filePath("updates");
         std::unique_ptr<im::WorkspaceBackendHsx> workspace;
         std::unique_ptr<QLockFile> workspaceLock;
         if(config.contains("workspaceFile")){

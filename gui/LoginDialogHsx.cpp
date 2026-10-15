@@ -5,6 +5,7 @@
 #include "LoginMusicHsx.h"
 #include "IconHsx.h"
 #include "ThemeHsx.h"
+#include "UpdateManagerHsx.h"
 #include <QApplication>
 #include <QAction>
 #include <QButtonGroup>
@@ -73,6 +74,9 @@ LoginDialogHsx::LoginDialogHsx(AppSessionHsx& session,QWidget* parent,bool admin
     auto* submit=new QPushButton("登 录 听 澜");submit->setObjectName("loginSubmit");submit->setIcon(IconHsx::get("arrow","#ffffff"));submit->setLayoutDirection(Qt::RightToLeft);submit->setMinimumHeight(22);right->addWidget(submit);
     register_=new QPushButton("还未相识？  创建你的账号");register_->setObjectName("registerAccount");right->addWidget(register_);right->addStretch();
     if(settings){auto* connection=new QPushButton("服务器连接设置");connection->setObjectName("connectionSettings");connection->setIcon(IconHsx::get("settings","#718769"));right->addWidget(connection);connect(connection,&QPushButton::clicked,this,[this,settings,submit]{session_.logout();submit->setEnabled(true);register_->setEnabled(true);error_->clear();if(settings())done(2);});}
+#ifdef IM_USER_CLIENT
+    auto* updates=new QPushButton("软件更新");updates->setObjectName("softwareUpdates");right->addWidget(updates);connect(updates,&QPushButton::clicked,this,[]{UpdateManagerHsx::showUpdates();});
+#endif
     hint_=new QLabel;hint_->setWordWrap(true);hint_->setStyleSheet("background:#f2f5ec;color:#8c9b7a;border:1px solid #e8edde;border-radius:10px;padding:12px;font-size:10px;");right->addWidget(hint_);
     auto* signature=new QLabel("听澜  ·  让每一次相逢都有回响");signature->setAlignment(Qt::AlignCenter);signature->setStyleSheet("color:#abb59b;font-size:9px;padding-top:8px;");right->addWidget(signature);outer->addWidget(body,1);
     connect(userRole_,&QPushButton::clicked,this,[this]{role_->setCurrentIndex(0);});if(adminRole_)connect(adminRole_,&QPushButton::clicked,this,[this]{role_->setCurrentIndex(1);});

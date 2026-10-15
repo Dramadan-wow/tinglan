@@ -1,6 +1,8 @@
 #include "ChatServerHsx.h"
 #include "WorkspaceBackendHsx.h"
 #include "PasswordHsx.h"
+#include "UpdateStoreHsx.h"
+#include "UpdateInfoHsx.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QFile>
@@ -83,6 +85,8 @@ void ChatServerHsx::read(QTcpSocket* socket){
 }
 void ChatServerHsx::handle(const std::shared_ptr<Peer>& peer,const QJsonObject& m){
     const auto type=m.value("type").toString(),id=m.value("id").toString();
+    if(type=="update_check"||type=="update_chunk"){update(peer,m);return;}
+    if(peer->updater){error(peer,"update_connection_only",id,true);return;}
     if(type=="login"){login(peer,m);return;}
     if(peer->user.isEmpty()){error(peer,"not_authenticated",id);return;}
     // A claimed sender can never override the authenticated connection identity.
@@ -198,8 +202,31 @@ void ChatServerHsx::sendSnapshot(const std::shared_ptr<Peer>& peer,const QByteAr
 
 void ChatServerHsx::tick(){
     const auto now=clock_.elapsed();const auto peers=peers_.values();
-    for(const auto& p:peers)if(p->socket&&((p->user.isEmpty()&&now-p->created>options_.loginTimeoutMs)||(!p->user.isEmpty()&&now-p->lastActive>options_.idleTimeoutMs))){emit logLine("timeout user="+p->user);p->socket->abort();}
+    for(const auto& p:peers)if(p->socket&&(p->updater?(now-p->lastActive>30000||now-p->created>1800000):((p->user.isEmpty()&&now-p->created>options_.loginTimeoutMs)||(!p->user.isEmpty()&&now-p->lastActive>options_.idleTimeoutMs)))){emit logLine("timeout user="+p->user);p->socket->abort();}
     for(auto it=seen_.begin();it!=seen_.end();)if(now-it->time>600000)it=seen_.erase(it);else++it;
     for(auto it=attempts_.begin();it!=attempts_.end();)if(now-it->first>60000)it=attempts_.erase(it);else++it;
+}
+void ChatServerHsx::update(const std::shared_ptr<Peer>& p,const QJsonObject& m){
+    const auto id=m["id"].toString();const auto data=m["data"].toObject();
+    const auto* ssl=qobject_cast<QSslSocket*>(p->socket.data());
+    if(!ssl||!ssl->isEncrypted()||!p->user.isEmpty()||p->authenticating||
+       !m["senderId"].toString().isEmpty()||!m["recipientId"].toString().isEmpty()){
+        error(p,"update_requires_separate_tls",id,true);return;
+    }
+    if(m["type"]=="update_check"){
+        if(p->updater||data["edition"]!="client"||data["platform"]!="windows-x64"||!validReleaseVersion(data["version"].toString())){error(p,"invalid_update_check",id,true);return;}
+        p->updater=true;p->lastActive=clock_.elapsed();p->updateInfo=openPublishedUpdate(options_.updatesDirectory,p->updateFile);
+        const bool available=!p->updateInfo.isEmpty()&&newerRelease(p->updateInfo["version"].toString(),data["version"].toString());
+        send(p,envelope("update_info",{{"requestId",id},{"available",available},{"published",!p->updateInfo.isEmpty()},{"release",available?p->updateInfo:QJsonObject{}}}));
+        if(!available)p->updateFile.close();return;
+    }
+    const double offset=data["offset"].toDouble(-1);
+    if(!p->updater||!p->updateFile.isOpen()||offset!=p->updateOffset||data["sha256"]!=p->updateInfo["sha256"]||p->updateOffset>=p->updateFile.size()){
+        error(p,"invalid_update_chunk",id,true);return;
+    }
+    const auto bytes=p->updateFile.read(UpdateChunkSize);if(bytes.isEmpty()){error(p,"update_read_failed",id,true);return;}
+    p->lastActive=clock_.elapsed();p->updateOffset+=bytes.size();
+    send(p,envelope("update_chunk",{{"requestId",id},{"offset",offset},{"payload",QString::fromLatin1(bytes.toBase64())}}));
+    if(p->updateOffset==p->updateFile.size())p->updateFile.close();
 }
 }

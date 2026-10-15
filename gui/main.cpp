@@ -20,7 +20,7 @@
 #include <QTimer>
 #include <memory>
 int main(int argc,char** argv){
-    QApplication app(argc,argv);app.setApplicationName("听澜");app.setOrganizationName("Hsx Coursework");app.setApplicationVersion("5.4.0");im::ThemeHsx::install(app);app.setWindowIcon(im::IconHsx::get("brand","#356552"));
+    QApplication app(argc,argv);app.setApplicationName("听澜");app.setOrganizationName("Hsx Coursework");app.setApplicationVersion(IM_APP_VERSION);im::ThemeHsx::install(app);app.setWindowIcon(im::IconHsx::get("brand","#356552"));
     QCommandLineParser parser;parser.setApplicationDescription("听澜 · 课程即时通信系统 Qt 前端");parser.addOption({"offline-demo","使用独立本机模式（不生成演示账号）"});parser.addHelpOption();parser.addVersionOption();parser.addOption({"data","使用指定数据文件","file"});parser.addOption({"self-test","运行隔离的 GUI 测试并输出截图","directory"});parser.addOption({"preview","渲染演示会话截图后退出","image"});parser.addOption({"admin","默认选择系统管理员登录"});parser.addOption({"preview-admin","渲染隔离的管理员界面后退出","image"});parser.addOption({"client-config","使用指定连接配置（不覆盖本机配置）","file"});parser.addOption({"connection-settings","先打开服务器连接设置"});parser.process(app);
     if((parser.isSet("client-config") && parser.value("client-config").isEmpty()) || (parser.isSet("offline-demo") && (parser.isSet("client-config") || parser.isSet("connection-settings")))){QMessageBox::critical(nullptr,"配置错误","--client-config 必须指定文件，且不能与 --offline-demo 同时使用。");return 1;}
     if(parser.isSet("self-test"))return im::GuiChecksHsx::run(QFileInfo(parser.value("self-test")).absoluteFilePath());

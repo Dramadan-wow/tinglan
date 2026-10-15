@@ -5,6 +5,7 @@
 #include "IconHsx.h"
 #include "RuntimeHsx.h"
 #include "ConnectionDialogHsx.h"
+#include "UpdateManagerHsx.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
@@ -17,7 +18,8 @@ bool remoteProfile(const QString& path){QFile f(path);if(!f.open(QIODevice::Read
     const auto c=QJsonDocument::fromJson(f.readAll()).object();return !c["host"].toString().isEmpty()&&c["tls"].toBool()&&!c["autoStartLocalServer"].toBool()&&!c["allowInsecureLoopback"].toBool();}
 }
 int main(int argc,char** argv){
-    QApplication app(argc,argv);app.setApplicationName("听澜");app.setOrganizationName("Hsx Coursework");app.setApplicationVersion("5.4.0");
+    QApplication app(argc,argv);app.setApplicationName("听澜");app.setOrganizationName("Hsx Coursework");app.setApplicationVersion(IM_APP_VERSION);
+    auto* updater=new im::UpdateManagerHsx(&app);
     im::ThemeHsx::install(app);app.setWindowIcon(im::IconHsx::get("brand","#356552"));
     QCommandLineParser parser;parser.setApplicationDescription("听澜 · 普通客户端");parser.addHelpOption();parser.addVersionOption();
     parser.addOption({"client-config","使用指定的 TLS 中心服务器配置","file"});parser.addOption({"connection-settings","打开连接设置"});parser.addOption({"connection-code","导入服务器文字连接码","code"});parser.process(app);
@@ -30,6 +32,7 @@ int main(int argc,char** argv){
         }
         for(;;){
             const auto runtime=im::prepareRuntime(config);QLockFile lock(runtime.data+".lock");
+            updater->configure(runtime.config);
             if(!lock.tryLock()){QMessageBox::information(nullptr,"听澜已经打开","请使用已打开的客户端窗口。");return 1;}
             im::AppSessionHsx session(im::AppSessionHsx::path(runtime.data));session.configureRemote(runtime.config);
             QString requested;

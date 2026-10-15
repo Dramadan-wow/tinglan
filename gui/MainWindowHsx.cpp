@@ -13,6 +13,7 @@
 #include "AvatarHsx.h"
 #include "FeedPageHsx.h"
 #include "WeiboThemeHsx.h"
+#include "UpdateManagerHsx.h"
 #include <QApplication>
 #include <QTimer>
 #include <QButtonGroup>
@@ -65,6 +66,9 @@ MainWindowHsx::MainWindowHsx(AppSessionHsx& s,QWidget* parent):QMainWindow(paren
     pages_=new QStackedWidget;pages_->setObjectName("mainPages");chat_=new ChatPageHsx(s);friends_=new FriendsPageHsx(s);groups_=new GroupsPageHsx(s);requests_=new RequestsPageHsx(s);accounts_=new AccountsPageHsx(s);data_=new DataPageHsx(s);network_=new NetworkPageHsx(this);network_->hide();feed_=new FeedPageHsx(s,this);weibo_=new FeedPageHsx(s,this,"weibo");studio_=new StudioPageHsx(s);
     for(QWidget* page:std::initializer_list<QWidget*>{chat_,friends_,groups_,requests_,accounts_,data_,feed_,studio_,weibo_})pages_->addWidget(page);
     auto* body=new QWidget;auto* bodyLayout=new QVBoxLayout(body);bodyLayout_=bodyLayout;bodyLayout->setContentsMargins(26,24,26,22);bodyLayout->addWidget(pages_);areaLayout->addWidget(body,1);layout->addWidget(area,1);
+#ifdef IM_USER_CLIENT
+    auto* updates=new QPushButton("软件更新");updates->setObjectName("softwareUpdates");statusBar()->addPermanentWidget(updates);connect(updates,&QPushButton::clicked,this,[]{UpdateManagerHsx::showUpdates();});
+#endif
     connection_=new QLabel(s.remote()?s.connectionStatus():"本机演示");connection_->setObjectName("connectionState");statusBar()->addPermanentWidget(connection_);connect(&s,&AppSessionHsx::connectionChanged,connection_,&QLabel::setText);
     statusBar()->setSizeGripEnabled(false);statusBar()->showMessage("  所有修改已保存");auto* footer=new QLabel("山水有相逢  ·  听澜     ");footer->setObjectName("muted");statusBar()->addPermanentWidget(footer);
     connect(services_,&QComboBox::currentIndexChanged,this,[this](int){if(services_->currentIndex()>=0)session_.switchService(static_cast<ServiceHsx>(services_->currentData().toInt()));});

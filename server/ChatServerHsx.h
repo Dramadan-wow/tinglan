@@ -9,6 +9,7 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <memory>
+#include <QFile>
 class QTcpSocket;
 namespace im { class WorkspaceBackendHsx; }
 namespace im::net {
@@ -16,7 +17,7 @@ struct ServerOptionsHsx {
     QHostAddress address=QHostAddress::LocalHost;
     quint16 port=56000;
     bool tls=true,allowInsecureLoopback=false;
-    QString certificateFile,keyFile;
+    QString certificateFile,keyFile,updatesDirectory;
     int maxConnections=128,idleTimeoutMs=60000,loginTimeoutMs=30000;
 };
 class ChatServerHsx final : public QTcpServer {
@@ -40,6 +41,10 @@ private:
         int count=0;
         bool authenticating=false,closing=false,syncing=false,resync=false,administrator=false;
         int workspaceUser=0,service=0;
+        bool updater=false;
+        QFile updateFile;
+        QJsonObject updateInfo;
+        qint64 updateOffset=0;
     };
     struct Seen { QByteArray digest; qint64 time; };
     void read(QTcpSocket* socket);
@@ -48,6 +53,7 @@ private:
     void error(const std::shared_ptr<Peer>& peer,const QString& code,const QString& request={},bool close=false);
     void login(const std::shared_ptr<Peer>& peer,const QJsonObject& message);
     void chat(const std::shared_ptr<Peer>& peer,const QJsonObject& message);
+    void update(const std::shared_ptr<Peer>& peer,const QJsonObject& message);
     void tick();
     void workspaceLogin(const std::shared_ptr<Peer>&,const QJsonObject&);
     void synchronize(const std::shared_ptr<Peer>&);
