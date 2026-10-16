@@ -19,6 +19,7 @@ public:
     QJsonArray orders()const;
     void reviewOrder(const QString& id,bool approve,const QString& note);
     int registerUser(const QString& nickname,const std::string& passwordHash,ServiceHsx service);
+    QJsonObject filePermissions(int user);
 private:
     void persist();
     void recordAudit(const std::string& actor,const std::string& action,int user,ServiceHsx service);

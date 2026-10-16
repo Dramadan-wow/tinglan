@@ -9,5 +9,13 @@
   "maxConnections": 128,
   "loginTimeoutMs": 30000,
   "idleTimeoutMs": 60000,
-  "workspaceFile": "/var/lib/tinglan/workspace.sqlite"
+  "workspaceFile": "/var/lib/tinglan/workspace.sqlite",
+  "fileServiceEnabled": true,
+  "filePort": 56111,
+  "fileStorageDirectory": "/var/lib/tinglan/storage",
+  "maxFileMiB": 2048,
+  "fileQuotaMiB": 20480,
+  "fileUserQuotaMiB": 5120,
+  "fileMaxConnections": 32,
+  "fileTempHours": 168
 }

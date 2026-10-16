@@ -88,6 +88,17 @@ QJsonObject WorkspaceBackendHsx::adminSnapshot()const{
 }
 QJsonObject WorkspaceBackendHsx::snapshot(int viewer)const{auto out=WorkspaceCodecHsx::encode(data_,viewer);out["viewer"]=viewer;const auto social=SocialStoreHsx(db_,data_).snapshot(viewer);for(auto it=social.begin();it!=social.end();++it)out[it.key()]=it.value();return out;}
 QJsonArray WorkspaceBackendHsx::orders()const{return SocialStoreHsx(db_,data_).orders();}
+QJsonObject WorkspaceBackendHsx::filePermissions(int user){
+    QJsonArray services;QJsonObject routes;
+    if(!data_.users().count(user)||!data_.user(user).loginAllowed())return {{"user",user},{"services",services},{"routes",routes}};
+    for(const auto& [type,account]:data_.user(user).services()){
+        if(!activeService(type))continue;services.append(int(type));
+        for(const auto& [id,friendship]:data_.account(user,type).friends()){
+            try{if(data_.user(id).loginAllowed()&&FriendManagerHsx(data_).allowed(user,type,id,friendship.contact()))routes[QString::number(int(type))+":"+QString::number(id)]=int(friendship.contact());}catch(...){}
+        }
+    }
+    return {{"user",user},{"services",services},{"routes",routes}};
+}
 void WorkspaceBackendHsx::reviewOrder(const QString& id,bool approve,const QString& note){command(0,ServiceHsx::Count,QUuid::createUuid().toString(),{{"op","admin.membership.review"},{"id",id},{"approve",approve},{"verified",approve},{"note",note}},true);}
 int WorkspaceBackendHsx::registerUser(const QString& nickname,const std::string& hash,ServiceHsx service){
     require(PasswordHsx::valid(hash),"密码摘要无效");require(data_.users().size()<1000,"当前用户容量已满");

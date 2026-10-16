@@ -6,6 +6,7 @@
 #include "AvatarHsx.h"
 #include "ChatBackdropHsx.h"
 #include "FireBuddyHsx.h"
+#include "FileMessageCardHsx.h"
 #include <QCheckBox>
 #include <QClipboard>
 #include <QApplication>
@@ -27,6 +28,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <limits>
 namespace im {
 using S=AppSessionHsx;
 namespace {
@@ -78,6 +80,9 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     auto* emoji=iconButton("smile","插入表情");emoji->setObjectName("emojiButton");emoji->setStyleSheet("padding:0;border:none;background:transparent;");bottom->addWidget(emoji);
     auto* dress=iconButton("palette","气泡、头像与背景装扮");dress->setObjectName("chatDress");dress->setStyleSheet("padding:0;border:none;background:transparent;");connect(dress,&QPushButton::clicked,this,&ChatPageHsx::openStudio);bottom->addWidget(dress);
     mentions_=new QComboBox;mentions_->setMaximumWidth(100);mentions_->hide();bottom->addWidget(mentions_);
+    file_=iconButton("file","发送文件");file_->setObjectName("sendFile");file_->setStyleSheet("padding:0;border:none;background:transparent;");bottom->addWidget(file_);
+    connect(file_,&QPushButton::clicked,this,[this]{if(kind_!=MessageKindHsx::Private||!target_)return;const auto path=QFileDialog::getOpenFileName(this,"选择发送给好友的文件");if(!path.isEmpty())session_.files().upload(int(service_),target_,path);});
+    connect(&session_.files(),&net::FileTransferManagerHsx::filesChanged,this,[this]{const auto value=scroll_->verticalScrollBar()->value();const bool bottom=scroll_->verticalScrollBar()->maximum()-value<30;refresh();if(!bottom)QTimer::singleShot(0,this,[this,value]{scroll_->verticalScrollBar()->setValue(value);});},Qt::QueuedConnection);
     composer_=new QLineEdit;composer_->setObjectName("messageInput");composer_->setPlaceholderText("输入消息…");composer_->setMaxLength(5500);composer_->setMinimumWidth(60);composer_->setStyleSheet("background:#f0f5fb;border:none;border-radius:17px;padding:9px 12px;font-size:13px;");bottom->addWidget(composer_,1);
     send_=new QPushButton;send_->setObjectName("sendMessage");send_->setProperty("primary",true);send_->setIcon(IconHsx::get("send","#ffffff"));send_->setIconSize(QSize(23,23));send_->setFixedSize(44,44);send_->setToolTip("发送消息（Enter）");send_->setAccessibleName("发送消息");bottom->addWidget(send_);composerLayout->addWidget(composerFrame);
     auto* foot=new QLabel("Enter 发送 · 右键消息可收藏、复制或撤回");foot->setStyleSheet("color:#96a9c1;font-size:9px;");foot->setAlignment(Qt::AlignCenter);composerLayout->addWidget(foot);rl->addWidget(composerArea);layout->addWidget(right,1);
@@ -118,7 +123,9 @@ void ChatPageHsx::refresh() {
     QSignalBlocker guard(conversations_);conversations_->clear();if(!session_.signedIn())return;const auto& account=session_.data().account(user_,service_);
     auto add=[&](const QString& name,MessageKindHsx kind,int target,const QString& detail){
         int unread=0;const auto history=session_.messages().history(user_,service_,kind,target);for(auto* message:history)if(message->sender()!=user_&&!message->read(user_))++unread;
-        const QString preview=history.empty()?detail:history.back()->recalled()?"消息已撤回":S::q(history.back()->text());
+        QString preview=history.empty()?detail:history.back()->recalled()?"消息已撤回":S::q(history.back()->text());
+        const auto files=kind==MessageKindHsx::Private?session_.files().cards(int(service_),target):QJsonArray{};
+        if(!files.isEmpty()&&(history.empty()||files.last().toObject()["created"].toDouble()>=history.back()->created()))preview="[文件] "+files.last().toObject()["name"].toString();
         auto* item=new QListWidgetItem(name+"\n"+preview,conversations_);item->setData(Qt::UserRole,static_cast<int>(kind));item->setData(Qt::UserRole+1,target);item->setData(Qt::UserRole+2,name);item->setData(Qt::UserRole+3,preview);item->setData(Qt::UserRole+4,unread);item->setData(Qt::UserRole+5,history.empty()?QString{}:QDateTime::fromSecsSinceEpoch(history.back()->created()).toString("HH:mm"));item->setSizeHint(QSize(0,86));if(kind==MessageKindHsx::Private){AvatarHsx icon(session_.studio(),target,name,52);item->setData(Qt::UserRole+6,icon.grab());}
         item->setHidden(!(name+preview).contains(conversationSearch_->text(),Qt::CaseInsensitive));if(kind==kind_&&target==target_)conversations_->setCurrentItem(item);
     };
@@ -134,6 +141,7 @@ void ChatPageHsx::showHistory() {
     renderedWidth_=scroll_->viewport()->width();
     while(auto* item=bubbles_->takeAt(0)){if(item->widget())delete item->widget();delete item;}
     composer_->setEnabled(target_!=0);send_->setEnabled(target_!=0);mentions_->setVisible(target_&&kind_==MessageKindHsx::Group);older_->hide();refreshDetails();
+    file_->setEnabled(target_&&kind_==MessageKindHsx::Private&&session_.files().available());file_->setToolTip(kind_==MessageKindHsx::Group?"群文件将在后续版本开放":session_.files().available()?"发送文件（支持断点续传）":"需要中心服务器启用 HTTPS 文件服务");
     static_cast<ChatBackdropHsx*>(content_)->setBackground(session_.studio().media(session_.user(),"background"));buddy_->setVisible(target_&&kind_==MessageKindHsx::Private);if(target_&&kind_==MessageKindHsx::Private)buddy_->setState(session_.studio().streak(target_),StudioStoreHsx::item("pet",session_.studio().choice(session_.user(),"pet")));
     if(!target_){
         title_->setText("山水有相逢");subtitle_->setText("选择一位好友，让故事从一句问候开始");
@@ -146,7 +154,10 @@ void ChatPageHsx::showHistory() {
     else{const auto& group=session_.data().group(target_);title_->setText(S::q(group.name()));subtitle_->setText(QString("%1 位成员 · %2%3").arg(group.members().size()).arg(S::q(modeName(group.policy().mode()))).arg(group.announcement().empty()?"":" · "+S::q(group.announcement())));mentions_->clear();mentions_->addItem("不 @",0);if(group.manages(user_))mentions_->addItem("@ 所有人",-1);for(const auto& entry:group.members())if(entry.first!=user_)mentions_->addItem("@ "+S::q(session_.data().user(entry.first).name()),entry.first);}
     const auto all=session_.messages().history(user_,service_,kind_,target_,S::s(search_->text()));std::vector<const MessageHsx*> history;for(auto* message:all)if(!favorites_->isChecked()||message->starred(user_))history.push_back(message);
     const auto begin=history.size()>static_cast<size_t>(limit_)?history.size()-limit_:0;older_->setVisible(begin>0);std::vector<long long> displayed;QDate lastDate;
+    const auto files=kind_==MessageKindHsx::Private&&!favorites_->isChecked()?session_.files().cards(int(service_),target_):QJsonArray{};qsizetype fi=0;
+    auto appendFiles=[&](qint64 until){while(fi<files.size()&&files[fi].toObject()["created"].toDouble()<=until){const auto f=files[fi++].toObject();if(!f["name"].toString().contains(search_->text(),Qt::CaseInsensitive))continue;const bool mine=f["sender"].toInt()==user_;auto* row=new QWidget;auto* layout=new QHBoxLayout(row);layout->setContentsMargins(1,3,1,3);auto* card=new FileMessageCardHsx(session_.files(),f,mine);if(mine)layout->addStretch();layout->addWidget(card);if(!mine)layout->addStretch();bubbles_->addWidget(row);}};
     for(size_t i=begin;i<history.size();++i){
+        appendFiles(history[i]->created());
         const auto* message=history[i];displayed.push_back(message->id());const bool mine=message->sender()==user_;const auto timestamp=QDateTime::fromSecsSinceEpoch(message->created());
         if(timestamp.date()!=lastDate){lastDate=timestamp.date();auto* stamp=new QLabel(lastDate==QDate::currentDate()?"今天":lastDate.toString("yyyy年M月d日"));stamp->setAlignment(Qt::AlignCenter);stamp->setStyleSheet("color:#6b7f91;background:rgba(255,255,255,185);border-radius:7px;font-size:10px;padding:4px 12px;");bubbles_->addWidget(stamp,0,Qt::AlignHCenter);}
         auto* row=new QWidget;auto* rowLayout=new QHBoxLayout(row);rowLayout->setContentsMargins(1,3,1,3);rowLayout->setSpacing(7);auto* column=new QVBoxLayout;column->setSpacing(4);
@@ -158,7 +169,8 @@ void ChatPageHsx::showHistory() {
         auto* avatar=new AvatarHsx(session_.studio(),message->sender(),S::q(session_.data().user(message->sender()).name()),38);
         if(mine){rowLayout->addStretch();rowLayout->addLayout(column);rowLayout->addWidget(avatar,0,Qt::AlignTop);}else{rowLayout->addWidget(avatar,0,Qt::AlignTop);rowLayout->addLayout(column);rowLayout->addStretch();}bubbles_->addWidget(row);
     }
-    if(history.empty()){auto* label=new QLabel("还没有消息，发送第一句问候吧。");label->setAlignment(Qt::AlignCenter);label->setObjectName("emptyState");bubbles_->addWidget(label);}
+    appendFiles(std::numeric_limits<qint64>::max());
+    if(history.empty()&&files.isEmpty()){auto* label=new QLabel("还没有消息，发送第一句问候吧。");label->setAlignment(Qt::AlignCenter);label->setObjectName("emptyState");bubbles_->addWidget(label);}
     bubbles_->addStretch();QTimer::singleShot(0,this,[this]{scroll_->verticalScrollBar()->setValue(scroll_->verticalScrollBar()->maximum());});
     if(active_){session_.markDisplayed(displayed);if(auto* item=conversations_->currentItem()){int unread=0;for(auto* message:session_.messages().history(user_,service_,kind_,target_))if(message->sender()!=user_&&!message->read(user_))++unread;item->setData(Qt::UserRole+4,unread);conversations_->viewport()->update();}}
 }

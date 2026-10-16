@@ -31,6 +31,7 @@ def main():
     shutil.copy2(ROOT/'docs/管理员使用说明.md',BUNDLE/'管理员使用说明.md')
     shutil.copy2(ROOT/'docs/双电脑局域网-v5.3.1.md',BUNDLE/'双电脑局域网说明.md')
     shutil.copy2(ROOT/'docs/自动更新.md',BUNDLE/'自动更新说明.md')
+    shutil.copy2(ROOT/'docs/文件传输.md',BUNDLE/'文件传输说明.md')
     licenses=BUNDLE/'licenses';licenses.mkdir(exist_ok=True)
     for sbom in (QT/'sbom').glob('*.spdx.json'):
         if sbom.name.startswith(('qtbase-','qtmultimedia-')):shutil.copy2(sbom,licenses/sbom.name)

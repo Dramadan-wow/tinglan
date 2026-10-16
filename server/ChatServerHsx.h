@@ -13,6 +13,7 @@
 class QTcpSocket;
 namespace im { class WorkspaceBackendHsx; }
 namespace im::net {
+class FileStorageServiceHsx;
 struct ServerOptionsHsx {
     QHostAddress address=QHostAddress::LocalHost;
     quint16 port=56000;
@@ -26,6 +27,7 @@ public:
     ChatServerHsx(AuthStoreHsx& auth,const ServerOptionsHsx& options,QObject* parent=nullptr);
     ~ChatServerHsx() override;
     void setWorkspace(im::WorkspaceBackendHsx* backend){workspace_=backend;}
+    void setFileService(FileStorageServiceHsx* service,quint16 port);
     bool start(QString& error);
     void shutdown();
 signals:
@@ -44,6 +46,7 @@ private:
         bool updater=false;
         QFile updateFile;
         QJsonObject updateInfo;
+        QString fileToken;
         qint64 updateOffset=0;
     };
     struct Seen { QByteArray digest; qint64 time; };
@@ -69,6 +72,9 @@ private:
     QElapsedTimer clock_;
     QThreadPool workers_;
     QTimer timer_;
+    FileStorageServiceHsx* files_=nullptr;
+    quint16 filePort_=0;
+    void refreshFileGrants();
     int authJobs_=0;
 };
 }

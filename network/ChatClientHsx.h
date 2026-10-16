@@ -30,6 +30,8 @@ public:
     QString workspaceCommand(const QJsonObject& data);
     QString sendChat(const QString& recipient,const QString& text,const QString& id={});
 signals:
+    void fileSession(const QJsonObject& session);
+    void fileNotice();
     void stateChanged(const QString& state);
     void authenticatedChanged(bool online);
     void chatReceived(const QString& sender,const QString& text,const QString& id);

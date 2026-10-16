@@ -67,7 +67,7 @@ void ChatClientHsx::open() {
 }
 void ChatClientHsx::login(){
     emit stateChanged("正在验证远程账号…");loginId_=newId();
-    write(envelope("login",{{"username",options_.username},{"password",options_.password},{"workspace",options_.workspace},{"register",options_.registerAccount},{"service",options_.service},{"admin",options_.administrator}}, {},{},loginId_));
+    write(envelope("login",{{"username",options_.username},{"password",options_.password},{"workspace",options_.workspace},{"register",options_.registerAccount},{"service",options_.service},{"admin",options_.administrator},{"fileTransfer",1}}, {},{},loginId_));
 }
 bool ChatClientHsx::write(const QJsonObject& message){
     if(!socket_||socket_->state()!=QAbstractSocket::ConnectedState)return false;
@@ -98,6 +98,9 @@ void ChatClientHsx::handle(const QJsonObject& message){
         user_=data.value("userId").toString();if(options_.workspace?!validUser(user_):user_!=options_.username){lost("登录身份不匹配",false);return;}
         if(options_.workspace&&(data["admin"].toBool()!=options_.administrator)){lost("管理员身份校验不匹配",false);return;}
         options_.registerAccount=false;authenticated_=true;retryMs_=1000;lastHeartbeat_=clock_.elapsed();emit stateChanged(options_.administrator?"已连接 · 管理数据实时同步":options_.workspace?"已连接 · 消息实时同步":"已连接 · "+user_+(options_.tls?" · TLS 加密":" · 本机明文测试"));emit authenticatedChanged(true);
+        emit fileSession(data["files"].toObject());
+    }else if(type=="file_notice"&&authenticated_&&options_.workspace){
+        if(message["recipientId"].toString()!=user_||!validId(data["fileId"].toString())){lost("文件通知身份无效",false);return;}emit fileNotice();
     }else if(type=="workspace_sync"&&authenticated_&&options_.workspace){
         const auto sid=data["snapshot"].toString();const int part=data["part"].toInt(-1),count=data["count"].toInt(-1);const auto encoded=data["payload"].toString().toLatin1();const auto chunk=QByteArray::fromBase64(encoded);
         if(message["recipientId"].toString()!=user_||!validId(sid)||count<1||count>700||part<0||part>=count||chunk.toBase64()!=encoded){lost("同步数据无效",false);return;}

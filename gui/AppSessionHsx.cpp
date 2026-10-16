@@ -112,6 +112,11 @@ void AppSessionHsx::configureRemote(const QString& filename){
     remoteOptions_.host=config["host"].toString();remoteOptions_.port=quint16(config["port"].toInt());remoteOptions_.tls=config.value("tls").toBool(true);remoteOptions_.allowInsecureLoopback=config["allowInsecureLoopback"].toBool();
     if(!config["caFile"].toString().isEmpty())remoteOptions_.caFile=QDir(QFileInfo(filename).absolutePath()).absoluteFilePath(config["caFile"].toString());
     remoteOptions_.workspace=true;remoteConfigured_=true;lastNickname_=QSettings().value("lastRemoteNickname").toString();
+    files_.configure(remoteOptions_,QFileInfo(QString::fromStdWString(file_.wstring())).absolutePath()+"/file-transfers");
+    connect(&remoteClient_,&net::ChatClientHsx::fileSession,&files_,&net::FileTransferManagerHsx::setSession);
+    connect(&remoteClient_,&net::ChatClientHsx::fileNotice,&files_,&net::FileTransferManagerHsx::refresh);
+    connect(&remoteClient_,&net::ChatClientHsx::authenticatedChanged,this,[this](bool online){if(!online)files_.disconnected();});
+    connect(&files_,&net::FileTransferManagerHsx::problem,this,&AppSessionHsx::failed);
     connect(&remoteClient_,&net::ChatClientHsx::stateChanged,this,[this](const QString& text){connectionStatus_=text;emit connectionChanged(text);});
     connect(&remoteClient_,&net::ChatClientHsx::problem,this,[this](const QString& text){if(remoteLoginPending_){remoteLoginPending_=false;emit failed(text);emit remoteLoginFinished(false);}else{connectionStatus_=text;emit connectionChanged(text);}});
     connect(&remoteClient_,&net::ChatClientHsx::sessionRevoked,this,[this]{remoteAdmin_=false;user_=0;emit sessionEnded();});

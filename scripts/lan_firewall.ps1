@@ -3,10 +3,12 @@ param(
     [Parameter(Mandatory=$true)][string]$FriendAddress,
     [Parameter(Mandatory=$true)][string]$InterfaceAlias,
     [switch]$Apply,
+    [switch]$Files,
     [switch]$Remove
 )
 $ErrorActionPreference = 'Stop'
-$name = 'Tinglan-Trusted-LAN-56110'
+$port = if ($Files) {56111} else {56110}
+$name = "Tinglan-Trusted-LAN-$port"
 if ($Remove) { Remove-NetFirewallRule -Name $name -ErrorAction Stop; return }
 $localIp = [System.Net.IPAddress]::Parse($LocalAddress)
 $friendIp = [System.Net.IPAddress]::Parse($FriendAddress)
@@ -17,8 +19,8 @@ if (!$adapter) { throw 'Local address does not belong to this interface.' }
 $profile = Get-NetConnectionProfile -InterfaceAlias $InterfaceAlias
 if ($profile.NetworkCategory -ne 'Private') { throw 'This script only permits a trusted Private network. Do not change a public/campus Wi-Fi to Private just to pass this check.' }
 $params = @{
-    Name=$name; DisplayName='Tinglan: trusted friend only (TCP 56110)'; Direction='Inbound'; Action='Allow';
-    Protocol='TCP'; LocalPort=56110; LocalAddress=$LocalAddress; RemoteAddress=$FriendAddress;
+    Name=$name; DisplayName="Tinglan: trusted friend only (TCP $port)"; Direction='Inbound'; Action='Allow';
+    Protocol='TCP'; LocalPort=$port; LocalAddress=$LocalAddress; RemoteAddress=$FriendAddress;
     InterfaceAlias=$InterfaceAlias; Profile='Private'; EdgeTraversalPolicy='Block'
 }
 if (!$Apply) { $params | Format-Table; Write-Host 'Preview only. Run in an elevated PowerShell with -Apply to create this exact rule.'; return }

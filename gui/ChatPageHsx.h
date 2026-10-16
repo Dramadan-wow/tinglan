@@ -32,7 +32,7 @@ private:
     QVBoxLayout* bubbles_;
     QComboBox* mentions_;
     QCheckBox* favorites_;
-    QPushButton *send_, *older_;
+    QPushButton *send_, *older_, *file_;
     FireBuddyHsx* buddy_;
     QTimer* reflow_ = nullptr;
     MessageKindHsx kind_ = MessageKindHsx::Private;

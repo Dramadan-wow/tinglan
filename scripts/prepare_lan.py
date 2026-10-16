@@ -139,7 +139,9 @@ def prepare(config, host, listen, destination, runtime):
     settings.pop('workspaceImport', None)
     settings.update(listenAddress=listen, port=56110, tls=True, allowInsecureLoopback=False,
                     idleExitMs=0, workspaceFile=str(database), usersFile=str(users),
-                    certificateFile='server.pem', keyFile='server.key')
+                    certificateFile='server.pem', keyFile='server.key',
+                    fileServiceEnabled=True, filePort=56111, fileStorageDirectory='storage',
+                    maxFileMiB=2048, fileQuotaMiB=20480, fileUserQuotaMiB=5120)
     write_json(private/'server.json', settings)
     client = destination/'client';client.mkdir()
     # Only public configuration is generated here. Friends install the generic client EXE.

@@ -1,5 +1,7 @@
 #include "ChatServerHsx.h"
 #include "WorkspaceBackendHsx.h"
+#include "FileStorageServiceHsx.h"
+#include <QThread>
 #include <memory>
 #include <QCoreApplication>
 #include <QCommandLineParser>
@@ -17,6 +19,10 @@
 #include <cstdio>
 #include <stdexcept>
 namespace {
+struct FileRuntime {
+    QThread thread;im::net::FileStorageServiceHsx* service=nullptr;
+    ~FileRuntime(){if(thread.isRunning()){QMetaObject::invokeMethod(service,[this]{service->stop();delete service;service=nullptr;},Qt::BlockingQueuedConnection);thread.quit();thread.wait();}}
+};
 volatile std::sig_atomic_t stopped=0;
 void onSignal(int){stopped=1;}
 void require(bool value,const char* message){if(!value)throw std::runtime_error(message);}
@@ -64,7 +70,18 @@ int main(int argc,char** argv){
         if(parser.isSet("import-audit")){require(bool(workspace),"workspaceFile required");QTextStream(stdout)<<"Imported audit records: "<<workspace->importAudit(parser.value("import-audit"))<<Qt::endl;return 0;}
         if(parser.isSet("set-admin")){require(bool(workspace),"workspaceFile required");workspace->setAdmin(parser.value("set-admin"),qEnvironmentVariable("TINGLAN_ADMIN_PASSWORD"));QTextStream(stdout)<<"Administrator credential saved"<<Qt::endl;return 0;}
         if(parser.isSet("orders")||parser.isSet("review-order")){require(bool(workspace),"workspaceFile required");if(parser.isSet("review-order"))workspace->reviewOrder(parser.value("review-order"),parser.isSet("approve"),parser.value("note"));QTextStream(stdout)<<QJsonDocument(workspace->orders()).toJson()<<Qt::endl;return 0;}
-        im::net::ChatServerHsx server(auth,options);server.setWorkspace(workspace.get());
+        FileRuntime files;quint16 filePort=0;
+        if(boolean(config,"fileServiceEnabled",false)){
+            require(options.tls&&bool(workspace),"File service requires TLS and a central workspace");im::net::FileStorageOptionsHsx f;
+            f.address=options.address;f.port=quint16(integer(config,"filePort",56111,1,65535));require(f.port!=options.port,"File HTTPS port must differ from chat port");filePort=f.port;
+            f.certificate=options.certificateFile;f.key=options.keyFile;f.directory=config.contains("fileStorageDirectory")?path("fileStorageDirectory"):QDir(configPath.absolutePath()).filePath("storage");
+            f.maxFileBytes=integer(config,"maxFileMiB",2048,1,8192)*1024LL*1024;f.quotaBytes=integer(config,"fileQuotaMiB",20480,1,1048576)*1024LL*1024;f.userQuotaBytes=integer(config,"fileUserQuotaMiB",5120,1,1048576)*1024LL*1024;
+            f.maxConnections=integer(config,"fileMaxConnections",32,1,128);f.tempLifetimeSeconds=integer(config,"fileTempHours",168,1,720)*3600;
+            files.service=new im::net::FileStorageServiceHsx(f);files.service->moveToThread(&files.thread);files.thread.start();QString failure;bool ok=false;
+            QMetaObject::invokeMethod(files.service,[&]{ok=files.service->start(failure);},Qt::BlockingQueuedConnection);require(ok,failure.toUtf8().constData());
+            QTextStream(stdout)<<"file_https listening port="<<filePort<<Qt::endl;
+        }
+        im::net::ChatServerHsx server(auth,options);server.setWorkspace(workspace.get());if(files.service)server.setFileService(files.service,filePort);
         QObject::connect(&server,&im::net::ChatServerHsx::logLine,&app,[](const QString& line){QTextStream(stdout)<<QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)<<" "<<line<<Qt::endl;});
         QString error;require(server.start(error),error.toUtf8().constData());
         std::signal(SIGINT,onSignal);std::signal(SIGTERM,onSignal);QTimer signalTimer;signalTimer.setInterval(200);

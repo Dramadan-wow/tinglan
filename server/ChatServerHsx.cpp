@@ -3,6 +3,8 @@
 #include "PasswordHsx.h"
 #include "UpdateStoreHsx.h"
 #include "UpdateInfoHsx.h"
+#include "FileStorageServiceHsx.h"
+#include <QRandomGenerator>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QFile>
@@ -43,6 +45,7 @@ void ChatServerHsx::incomingConnection(qintptr descriptor){
     socket->setReadBufferSize(2*MaxFrame+4);socket->setSocketOption(QAbstractSocket::KeepAliveOption,1);
     connect(socket,&QTcpSocket::readyRead,this,[this,socket]{read(socket);});
     connect(socket,&QTcpSocket::disconnected,this,[this,socket,peer]{
+        if(files_&&!peer->fileToken.isEmpty()){const auto token=peer->fileToken;QMetaObject::invokeMethod(files_,[service=files_,token]{service->revoke(token);},Qt::QueuedConnection);}
         if(!peer->user.isEmpty()&&online_.value(peer->user)==socket)online_.remove(peer->user);
         try{if(workspace_&&peer->workspaceUser)workspace_->online(peer->workspaceUser,false,im::ServiceHsx(peer->service));
             if(workspace_&&peer->administrator)workspace_->loginAudit({},0,im::ServiceHsx::Count,"管理员登出 / 连接断开",true);
@@ -98,6 +101,7 @@ void ChatServerHsx::handle(const std::shared_ptr<Peer>& peer,const QJsonObject& 
         catch(const std::exception& e){result={{"ok",false},{"detail",QString::fromUtf8(e.what())}};}
         result["requestId"]=id;send(peer,envelope("workspace_result",result,{},peer->user));
         if(result["ok"].toBool()){
+            refreshFileGrants();
             if(peer->administrator){for(const auto& other:peers_.values())if((result["revokeUser"].toInt()>0&&other->workspaceUser==result["revokeUser"].toInt())||(result["revokeAdmins"].toBool()&&other->administrator&&other!=peer))error(other,"session_revoked",{},true);}
             if(data["op"]=="sync")synchronize(peer);else for(const auto& other:peers_.values())if(other->workspaceUser||other->administrator)synchronize(other);
         }
@@ -159,10 +163,11 @@ void ChatServerHsx::workspaceLogin(const std::shared_ptr<Peer>& peer,const QJson
     const auto adminRecord=administrator?workspace_->adminCredential(nickname):std::string{};
     const auto record=administrator?(adminRecord.empty()?dummy:adminRecord):(user?workspace_->credential(user,im::serviceType(service)):dummy);
     peer->authenticating=true;++authJobs_;
-    workers_.start([this,peer,nickname,password,request,registration,service,user,record,administrator,adminRecord]{
+    const bool wantsFiles=data["fileTransfer"].toInt()==1;
+    workers_.start([this,peer,nickname,password,request,registration,service,user,record,administrator,adminRecord,wantsFiles]{
         bool valid=false;std::string hash;
         try{if(registration){hash=im::PasswordHsx::hash(password.toStdString());valid=true;}else valid=im::PasswordHsx::verify(password.toStdString(),record)&&(administrator?!adminRecord.empty():user!=0);}catch(...){}
-        QMetaObject::invokeMethod(this,[this,peer,nickname,request,registration,service,user,record,valid,hash,administrator]{
+        QMetaObject::invokeMethod(this,[this,peer,nickname,request,registration,service,user,record,valid,hash,administrator,wantsFiles]{
             --authJobs_;if(!peer->socket||!peers_.contains(peer->socket.data())||peer->closing)return;peer->authenticating=false;
             int authenticated=user;QString reason="账号或密码不正确";
             try{if(!valid)throw std::runtime_error("账号或密码不正确");
@@ -177,7 +182,9 @@ void ChatServerHsx::workspaceLogin(const std::shared_ptr<Peer>& peer,const QJson
                 else if(workspace_->resolve(nickname,im::serviceType(service))!=user||workspace_->credential(user,im::serviceType(service))!=record)throw std::runtime_error("账号信息已变更，请重新登录");
                 const auto stable="u"+QString::number(authenticated);if(online_.contains(stable))throw std::runtime_error("账号已在另一台设备登录");
                 peer->workspaceUser=authenticated;peer->service=service;peer->user=stable;peer->lastActive=clock_.elapsed();online_[stable]=peer->socket.data();workspace_->online(authenticated,true,im::serviceType(service));
-                send(peer,envelope("login_result",{{"requestId",request},{"ok",true},{"userId",stable},{"numericId",authenticated},{"workspace",true}}, {},stable));for(const auto& other:peers_.values())if(other->workspaceUser||other->administrator)synchronize(other);return;
+                QJsonObject fileSession;
+                if(files_&&options_.tls&&wantsFiles){QByteArray secret(32,Qt::Uninitialized);for(auto& b:secret)b=char(QRandomGenerator::system()->generate());peer->fileToken=QString::fromLatin1(secret.toHex());refreshFileGrants();fileSession={{"port",filePort_},{"token",peer->fileToken},{"user",authenticated}};}
+                send(peer,envelope("login_result",{{"requestId",request},{"ok",true},{"userId",stable},{"numericId",authenticated},{"workspace",true},{"files",fileSession}}, {},stable));for(const auto& other:peers_.values())if(other->workspaceUser||other->administrator)synchronize(other);return;
             }catch(const std::exception& e){reason=QString::fromUtf8(e.what());}
             try{workspace_->loginAudit(nickname,user,im::ServiceHsx(service),registration?"注册失败":administrator?"管理员登录失败":"用户登录失败："+reason,administrator);}catch(const std::exception&){emit logLine("login_audit_failed");}
             for(const auto& other:peers_.values())if(other->administrator)synchronize(other);
@@ -200,6 +207,19 @@ void ChatServerHsx::sendSnapshot(const std::shared_ptr<Peer>& peer,const QByteAr
     QTimer::singleShot(5,this,[this,peer,payload,id,part]{sendSnapshot(peer,payload,id,part);});
 }
 
+void ChatServerHsx::setFileService(FileStorageServiceHsx* service,quint16 port){
+    files_=service;filePort_=port;
+    connect(service,&FileStorageServiceHsx::fileReady,this,[this](int sender,int recipient,const QString& id){
+        for(const auto& p:peers_.values())if(!p->fileToken.isEmpty()&&(p->workspaceUser==sender||p->workspaceUser==recipient))send(p,envelope("file_notice",{{"fileId",id}}, {},p->user));
+    });
+}
+void ChatServerHsx::refreshFileGrants(){
+    if(!files_||!workspace_)return;
+    for(const auto& p:peers_.values())if(!p->fileToken.isEmpty()){
+        const auto permission=workspace_->filePermissions(p->workspaceUser);const auto token=p->fileToken;
+        QMetaObject::invokeMethod(files_,[service=files_,token,permission]{service->grant(token,permission);},Qt::QueuedConnection);
+    }
+}
 void ChatServerHsx::tick(){
     const auto now=clock_.elapsed();const auto peers=peers_.values();
     for(const auto& p:peers)if(p->socket&&(p->updater?(now-p->lastActive>30000||now-p->created>1800000):((p->user.isEmpty()&&now-p->created>options_.loginTimeoutMs)||(!p->user.isEmpty()&&now-p->lastActive>options_.idleTimeoutMs)))){emit logLine("timeout user="+p->user);p->socket->abort();}

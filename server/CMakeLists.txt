@@ -23,6 +23,7 @@ add_library(im_server_core STATIC AuthStoreHsx.cpp AuthStoreHsx.h ChatServerHsx.
 set_target_properties(im_server_core PROPERTIES AUTOMOC ON)
 target_include_directories(im_server_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(im_server_core PUBLIC im_network im_workspace Qt6::Sql Qt6::Gui)
+target_sources(im_server_core PRIVATE FileStorageServiceHsx.cpp FileStorageServiceHsx.h)
 add_executable(im_server main.cpp)
 target_link_libraries(im_server PRIVATE im_server_core)
 

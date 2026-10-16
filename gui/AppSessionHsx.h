@@ -7,6 +7,7 @@
 #include "StudioStoreHsx.h"
 #include <QObject>
 #include "ChatClientHsx.h"
+#include "FileTransferManagerHsx.h"
 #include <QJsonArray>
 #include <QSet>
 #include <QString>
@@ -50,6 +51,7 @@ public:
     QString lastNickname()const{return lastNickname_;}
     QString connectionStatus()const{return connectionStatus_;}
     net::ChatClientHsx* remoteClient(){return &remoteClient_;}
+    net::FileTransferManagerHsx& files(){return files_;}
     void markDisplayed(const std::vector<long long>& messages);
     int unreadCount() const;
     int requestCount() const;
@@ -74,6 +76,8 @@ private:
     GroupManagerHsx groups_;
     MessageManagerHsx messages_;
     StudioStoreHsx studio_;
+    net::FileTransferManagerHsx files_;
+    // Destroy the chat client first: its disconnect signal suspends live file tasks.
     net::ChatClientHsx remoteClient_;
     net::ClientOptionsHsx remoteOptions_;
     QHash<QString,QJsonObject> pendingCommands_;

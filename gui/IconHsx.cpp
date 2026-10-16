@@ -20,6 +20,7 @@ QPixmap draw(const QString& name,const QColor& color) {
     else if(name=="play") {p.setBrush(color);path.moveTo(8,5);path.lineTo(19,12);path.lineTo(8,19);path.closeSubpath();p.drawPath(path);}
     else if(name=="pause") {p.setBrush(color);p.drawRoundedRect(QRectF(6,5,3,14),1,1);p.drawRoundedRect(QRectF(15,5,3,14),1,1);}
     else if(name=="music") {p.drawEllipse(QRectF(3,15,6,5));p.drawEllipse(QRectF(15,12,6,5));path.moveTo(9,17);path.lineTo(9,5);path.lineTo(21,2);path.lineTo(21,14);path.moveTo(9,9);path.lineTo(21,6);p.drawPath(path);}
+    else if(name=="file") {path.moveTo(5,2);path.lineTo(14,2);path.lineTo(20,8);path.lineTo(20,22);path.lineTo(5,22);path.closeSubpath();path.moveTo(14,2);path.lineTo(14,8);path.lineTo(20,8);p.drawPath(path);p.drawLine(8,13,16,13);p.drawLine(8,17,14,17);}
     else if(name=="folder") {path.moveTo(3,7);path.lineTo(3,4);path.lineTo(10,4);path.lineTo(12,7);path.lineTo(21,7);path.lineTo(19,20);path.lineTo(3,20);path.closeSubpath();p.drawPath(path);p.drawLine(3,10,20,10);}
     else if(name=="shield") {path.moveTo(12,2);path.lineTo(21,6);path.lineTo(20,14);path.quadTo(19,19,12,22);path.quadTo(5,19,4,14);path.lineTo(3,6);path.closeSubpath();p.drawPath(path);p.drawLine(8,12,11,15);p.drawLine(11,15,16,9);}
     else if(name=="check") {p.drawLine(5,12,10,17);p.drawLine(10,17,20,6);}
