@@ -53,7 +53,15 @@ bool AppSessionHsx::loginNickname(const QString& nickname,ServiceHsx type,const 
     catch(const std::exception& error){emit failed(q(error.what()));return false;}
 }
 void AppSessionHsx::logout() {
-    if(remoteConfigured_){if(user_)lastNickname_=q(data_.user(user_).name());remoteClient_.stop();remoteAdmin_=false;user_=0;service_=ServiceHsx::Count;remoteLoginPending_=false;pendingCommands_.clear();readPending_.clear();social_={};feed_={};StorageHsx::load(data_,file_,false);admins_.initialize();emit changed();return;}
+    if(remoteConfigured_){
+        if(user_)lastNickname_=q(data_.user(user_).name());remoteClient_.stop();remoteAdmin_=false;user_=0;service_=ServiceHsx::Count;remoteLoginPending_=false;pendingCommands_.clear();readPending_.clear();social_={};feed_={};
+        // A fresh remote-only client has no local archive; its server snapshot stays in memory.
+        if(std::filesystem::exists(file_))StorageHsx::load(data_,file_,false);else data_=DataStoreHsx{};
+#ifndef IM_USER_CLIENT
+        admins_.initialize();
+#endif
+        emit changed();return;
+    }
     if (user_) {lastNickname_=q(data_.user(user_).name());accounts_.logout(user_);}
     save();admins_.logout(); user_ = 0; service_ = ServiceHsx::Count; save(); emit changed();
 }
