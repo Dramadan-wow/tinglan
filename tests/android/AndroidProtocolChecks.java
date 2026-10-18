@@ -62,6 +62,19 @@ public final class AndroidProtocolChecks {
             waitFor(()->b.model().array("feed").length()==1,"moments feed synchronized");
             String post=b.model().array("feed").getJSONObject(0).getString("id");b.command(Wire.obj("op","feed.like","post",post,"enabled",true));
             waitFor(()->a.model().array("feed").getJSONObject(0).optInt("likes")==1,"feed like synchronized");
+            a.command(Wire.obj("op","account.open","contact",2,"number",String.valueOf(aid),"password","isolated-weibo-password","shared",false));
+            b.command(Wire.obj("op","account.open","contact",2,"number",String.valueOf(bid),"password","isolated-weibo-password","shared",false));
+            a.command(Wire.obj("op","feed.publish","service",2,"channel","weibo","text","伊冯灵感 · 手机微博互通验证"));
+            waitFor(()->b.model().array("weibo").length()==1,"public Weibo post synchronized");
+            String blog=b.model().array("weibo").getJSONObject(0).getString("id");
+            b.command(Wire.obj("op","weibo.follow","service",2,"target",aid,"enabled",true));
+            waitFor(()->Workspace.contains(b.model().array("follows"),aid),"Weibo following persisted");
+            b.command(Wire.obj("op","weibo.dm.send","service",2,"target",aid,"post",blog,"text","来自公开微博的私信"));
+            waitFor(()->a.model().array("directMessages").length()==1,"Weibo direct message received");
+            a.command(Wire.obj("op","weibo.dm.read","service",2,"target",bid));
+            waitFor(()->a.model().array("directMessages").getJSONObject(0).optBoolean("read"),"Weibo inbox read state persisted");
+            a.command(Wire.obj("op","weibo.dm.send","service",2,"target",bid,"post","","text","微博私信双向回复"));
+            waitFor(()->b.model().array("directMessages").length()==2,"Weibo direct reply synchronized");
             rejects(()->a.client.command(Wire.obj("op","admin.allow","target",bid)),"admin operation blocked by mobile client");
             a.close();Thread.sleep(500);
             try(Probe again=new Probe(profile,"android_alpha",false)){waitFor(()->again.snapshot!=null,"existing account reconnected");check(again.model().history(0,0,bid).size()==2,"history survives client restart");}

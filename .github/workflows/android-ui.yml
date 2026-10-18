@@ -1,0 +1,58 @@
+name: Android native UI
+
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/android/**', 'scripts/build_android.py', 'tests/android-ui/**', '.github/workflows/android-ui.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Android build tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Create ephemeral test signing key
+        run: |
+          mkdir -p "$RUNNER_TEMP/tinglan-ui"
+          printf '%s' 'isolated-ci-test-signing-only' > "$RUNNER_TEMP/tinglan-ui/password.txt"
+          keytool -genkeypair -alias tinglan -keyalg RSA -keysize 2048 -validity 7 -keystore "$RUNNER_TEMP/tinglan-ui/test.p12" -storepass isolated-ci-test-signing-only -keypass isolated-ci-test-signing-only -dname 'CN=Tinglan Isolated UI Test'
+      - name: Build app and separate instrumentation
+        run: |
+          python scripts/build_android.py --sdk-root "$ANDROID_HOME" --java-home "$JAVA_HOME" --keystore "$RUNNER_TEMP/tinglan-ui/test.p12" --storepass-file "$RUNNER_TEMP/tinglan-ui/password.txt"
+          python tests/android-ui/build_checks.py --sdk-root "$ANDROID_HOME" --java-home "$JAVA_HOME" --keystore "$RUNNER_TEMP/tinglan-ui/test.p12" --storepass-file "$RUNNER_TEMP/tinglan-ui/password.txt"
+      - name: Enable KVM for the isolated runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Render phone and tablet screens
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            adb install dist/android/Tinglan-Android-1.1.0.apk
+            adb install build-package/android-ui/ui-checks.apk
+            adb shell am instrument -w cn.tinglan.mobile.tests/.UiChecks | tee build-package/android-ui/result.txt
+            grep -q 'PASS .* native UI checks' build-package/android-ui/result.txt
+            mkdir -p build-package/android-ui/screenshots
+            adb pull /sdcard/Android/data/cn.tinglan.mobile/files/ui-proof/. build-package/android-ui/screenshots/
+      - name: Preserve UI proof and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tinglan-android-native-ui
+          path: |
+            build-package/android-ui/screenshots/
+            build-package/android-ui/result.txt
+            build-package/android/build.log
