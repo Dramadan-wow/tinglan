@@ -53,8 +53,11 @@ public final class UiChecks extends Instrumentation {
         check("伊冯灵感主题");check("晴空来信");check("关注");check("私信");screenshot("03-weibo-phone");
         main(()->{try{set("weiboFilter",1);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("我的关注");check("晴空来信");screenshot("04-following-phone");
         main(()->{try{set("weiboInbox",true);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("微博私信");check("晴空来信");screenshot("05-inbox-phone");
+        // A density change recreates activities; never assert against a detached old view tree.
+        main(()->activity.finish());
         getUiAutomation().executeShellCommand("wm size 1600x1000").close();getUiAutomation().executeShellCommand("wm density 200").close();Thread.sleep(2500);waitForIdleSync();
-        main(()->{try{set("weiboInbox",false);set("weiboFilter",0);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("伊冯灵感主题");check("晴空来信");screenshot("06-weibo-tablet");
+        activity=startActivitySync(intent);waitForIdleSync();
+        main(()->{try{set("workspace",model);set("service",2);set("tab",2);set("channel","weibo");set("connectionState","界面验证 · 隔离示例数据");set("weiboInbox",false);set("weiboFilter",0);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("伊冯灵感主题");check("晴空来信");screenshot("06-weibo-tablet");
         main(()->{try{set("workspace",null);set("service",2);call("showLogin");}catch(Exception e){throw new RuntimeException(e);}});check("欢迎回来");screenshot("07-login-tablet");
         result.putString("result","PASS "+checks+" native UI checks; original artwork rendered");finish(Activity.RESULT_OK,result);
     }catch(Throwable e){result.putString("failure",e.toString());finish(Activity.RESULT_CANCELED,result);}}
