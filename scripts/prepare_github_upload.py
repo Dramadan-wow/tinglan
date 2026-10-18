@@ -19,7 +19,7 @@ def main():
     records=git('ls-files','--stage','-z').split(b'\0')
     text, binary, manifest = [], [], []
     blocked_roots=('bin/', '.tools/', 'build', 'dist/', 'recovery/', 'lan-profiles/', 'server/data/')
-    blocked_suffixes=('.key','.pem','.pfx','.p12','.sqlite','.db','.exe','.dll','.bak','.log','.user')
+    blocked_suffixes=('.key','.pem','.pfx','.p12','.sqlite','.db','.exe','.dll','.apk','.aab','.jks','.keystore','.bak','.log','.user')
     # Detect actual PEM key bodies; header-only negative test fixtures contain no key.
     token_pattern=re.compile(rb'(?:ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\r\n]+[A-Za-z0-9+/=]{20,})')
     for record in records:

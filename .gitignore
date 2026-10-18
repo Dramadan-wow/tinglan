@@ -44,6 +44,10 @@ __pycache__/
 *.obj
 *.exe
 *.dll
+*.apk
+*.aab
+*.jks
+*.keystore
 *.lib
 *.exp
 *.sqlite
@@ -77,6 +81,7 @@ __pycache__/
 /tests/client-installer-output/
 /tests/update-output/
 /tests/file-output/
+/tests/android-output/
 **/file-transfers/
 **/file-service-backups/
 /storage/
