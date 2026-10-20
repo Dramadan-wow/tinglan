@@ -63,6 +63,9 @@ int main() {
         expect(messageOf([&] { a.open(5, wc, 40005, "微信五", std::string{}); }) == "密码不能为空", "service password is not an admin password");
         expect(messageOf([] { PasswordHsx::hash(std::string{}, 8, "管理员密码"); }) == "管理员密码不能为空", "admin label");
         expect(messageOf([] { PasswordHsx::hash("abc"); }) == "密码至少8个字节", "minimum follows the argument");
+        expect(messageOf([] { PasswordHsx::check("123456"); }) == "密码至少8个字节", "form rule uses the shared minimum");
+        a.open(5, wc, 40005, "微信五", "123456");
+        expect(data.account(5, wc).verify("123456"), "an archived short password still signs in");
         rejects([&] { a.open(2, wb, 33333, "错误", "123456"); }, "wrong shared number");
         a.bind(1, 10001); expect(data.account(1, wc).boundQQ() == 10001, "QQ binding");
         rejects([&] { a.bind(1, 10002); }, "foreign QQ binding");

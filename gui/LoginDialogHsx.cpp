@@ -2,6 +2,7 @@
 #include "AppSessionHsx.h"
 #include "FormDialogHsx.h"
 #include "LandscapeHsx.h"
+#include "PasswordHsx.h"
 #include "LoginMusicHsx.h"
 #include "IconHsx.h"
 #include "ThemeHsx.h"
@@ -115,8 +116,8 @@ void LoginDialogHsx::registerUser() {
     }
     FormDialogHsx form("初次相逢 · 注册账号",this);form.text("name","登录昵称");form.text("birth","出生日期","2000-01-01");form.text("location","所在地","长春");
     QList<QPair<QString,QVariant>> types;for(int i=0;i<ActiveServiceCountHsx;++i)types.append({AppSessionHsx::q(serviceName(serviceType(i))),i});
-    form.combo("service","首个服务",types);form.text("number","服务号码");form.text("password","密码",{},true);form.text("repeat","确认密码",{},true);
-    form.submit([this](const FormDialogHsx& f){return session_.mutate([&]{require(f.textValue("password")==f.textValue("repeat"),"两次密码不一致");bool ok=false;const auto number=f.textValue("number").toLongLong(&ok);require(ok,"服务号码应为整数");session_.accounts().registerUser(session_.accounts().availableUserId(),AppSessionHsx::s(f.textValue("name").trimmed()),AppSessionHsx::s(f.textValue("birth")),AppSessionHsx::s(f.textValue("location").trimmed()),serviceType(f.choice("service")),number,AppSessionHsx::s(f.textValue("password")),false);});});
+    form.combo("service","首个服务",types);form.text("number","服务号码");form.text("password","密码（至少 8 字节）",{},true);form.text("repeat","确认密码",{},true);
+    form.submit([this](const FormDialogHsx& f){return session_.mutate([&]{require(f.textValue("password")==f.textValue("repeat"),"两次密码不一致");PasswordHsx::check(AppSessionHsx::s(f.textValue("password")));bool ok=false;const auto number=f.textValue("number").toLongLong(&ok);require(ok,"服务号码应为整数");session_.accounts().registerUser(session_.accounts().availableUserId(),AppSessionHsx::s(f.textValue("name").trimmed()),AppSessionHsx::s(f.textValue("birth")),AppSessionHsx::s(f.textValue("location").trimmed()),serviceType(f.choice("service")),number,AppSessionHsx::s(f.textValue("password")),false);});});
     if(form.exec()==QDialog::Accepted){user_->setText(form.textValue("name").trimmed());service_->setCurrentIndex(service_->findData(form.choice("service")));password_->setText(form.textValue("password"));login();}
 }
 }
