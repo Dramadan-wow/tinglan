@@ -4,7 +4,7 @@
 namespace im {
 void AdminManagerHsx::initialize() {
     if (!data_.adminHash_.empty()) return;
-    data_.adminHash_ = PasswordHsx::hash("admin123456");
+    data_.adminHash_ = PasswordHsx::hash("admin123456", 8, "管理员密码");
     data_.audit(data_.adminName_, "初始化管理员");
 }
 void AdminManagerHsx::login(const std::string& name, const std::string& password) {
@@ -35,7 +35,7 @@ void AdminManagerHsx::resetPassword(int user, ServiceHsx service, const std::str
 }
 void AdminManagerHsx::changePassword(const std::string& original, const std::string& password) {
     requireAdmin(); require(PasswordHsx::verify(original, data_.adminHash_), "原管理员密码不正确");
-    const auto hash = PasswordHsx::hash(password); data_.adminHash_ = hash;
+    const auto hash = PasswordHsx::hash(password, 8, "管理员密码"); data_.adminHash_ = hash;
     data_.audit(data_.adminName_, "修改管理员密码");
 }
 }

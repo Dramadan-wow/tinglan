@@ -51,8 +51,9 @@ bool PasswordHsx::valid(const std::string& encoded) {
     }
     return true;
 }
-std::string PasswordHsx::hash(const std::string& password, size_t minimum) {
-    checkText(password, "管理员密码", false, 128); require(password.size() >= minimum, "管理员密码至少8个字节");
+std::string PasswordHsx::hash(const std::string& password, size_t minimum, const std::string& field) {
+    checkText(password, field, false, 128);
+    require(password.size() >= minimum, field + "至少" + std::to_string(minimum) + "个字节");
     std::array<unsigned char, 16> salt{};
 #ifdef _WIN32
     require(BCryptGenRandom(nullptr, salt.data(), static_cast<ULONG>(salt.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0,
