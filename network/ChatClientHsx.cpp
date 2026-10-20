@@ -80,7 +80,11 @@ void ChatClientHsx::lost(const QString& reason,bool retry){
     const auto commands=commands_.keys();commands_.clear();for(const auto& id:commands)emit workspaceResult(id,{{"ok",false},{"detail","连接中断，操作结果待重新同步；请勿重复提交"}});
     const bool was=authenticated_;authenticated_=false;if(was)emit authenticatedChanged(false);
     const auto ids=pending_.keys();pending_.clear();for(const auto& id:ids)emit messageResult(id,false,"连接中断，送达状态未知；不会自动重发");
-    if(active_&&retry){emit stateChanged((options_.workspace?QString("连接暂不可用"):reason)+QString(" · %1 秒后自动重连").arg(retryMs_/1000));retry_.start(retryMs_);retryMs_=std::min(retryMs_*2,30000);}
+    if(active_&&retry){emit stateChanged((options_.workspace?QString("连接暂不可用"):reason)+QString(" · %1 秒后自动重连").arg(retryMs_/1000));
+        // Before the first authentication a dropped connection is the login failure itself;
+        // the login dialog only reacts to problem(), so retrying in silence would hang it.
+        if(!was&&options_.workspace)emit problem(reason);
+        retry_.start(retryMs_);retryMs_=std::min(retryMs_*2,30000);}
     else{const bool notify=active_;active_=false;retry_.stop();options_.password.clear();emit stateChanged(reason);if(notify&&options_.workspace)emit problem(reason);}
 }
 void ChatClientHsx::read(){
