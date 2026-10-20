@@ -49,7 +49,9 @@ ConnectionDialogHsx::ConnectionDialogHsx(const QString& currentFile,QWidget* par
     cloud_=new QRadioButton("云服务器模式（通过互联网连接）",this);cloud_->setObjectName("modeCloud");
     for(auto* radio:{local_,lan_,cloud_})layout->addWidget(radio);
     layout->addWidget(new QLabel("服务器地址"));host_=new QLineEdit;host_->setObjectName("serverHost");host_->setPlaceholderText("填写电脑 A 的 IP 或已部署的服务器域名");layout->addWidget(host_);
-    layout->addWidget(new QLabel("服务器端口"));port_=new QSpinBox;port_->setObjectName("serverPort");port_->setRange(1,65535);port_->setButtonSymbols(QAbstractSpinBox::NoButtons);port_->setValue(56110);layout->addWidget(port_);
+    // A spin box accepts wheel edits by default; one scroll here silently moves the chat port
+    // by one and the client then dials a port that never completes the TLS handshake.
+    layout->addWidget(new QLabel("服务器端口"));port_=new QSpinBox;port_->setObjectName("serverPort");port_->setRange(1,65535);port_->setButtonSymbols(QAbstractSpinBox::NoButtons);port_->setFocusPolicy(Qt::StrongFocus);port_->setValue(56110);layout->addWidget(port_);
     tls_=new QLabel;tls_->setWordWrap(true);tls_->setObjectName("connectionTls");layout->addWidget(tls_);
     caBox_=new QWidget;auto* caLayout=new QVBoxLayout(caBox_);caLayout->setContentsMargins(0,0,0,0);caLayout->setSpacing(7);
     caLayout->addWidget(new QLabel("CA 证书（局域网测试选择电脑 A 提供的 ca.pem；留空使用系统信任证书）"));
