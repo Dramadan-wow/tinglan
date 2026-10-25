@@ -59,7 +59,7 @@ private:
     QByteArray snapshotBytes_;
     int snapshotPart_=0,snapshotCount_=0;
     QHash<QString,qint64> commands_;
-    bool active_=false,authenticated_=false;
+    bool active_=false,authenticated_=false,everAuthenticated_=false;
     int retryMs_=1000;
 };
 }

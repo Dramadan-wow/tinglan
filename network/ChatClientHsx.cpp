@@ -35,7 +35,7 @@ void ChatClientHsx::start(const ClientOptionsHsx& options) {
     if(!options.tls && (!options.allowInsecureLoopback || !QHostAddress(options.host).isLoopback())) {
         emit problem("明文测试只允许显式连接 127.0.0.1 或 ::1；其他地址必须使用 TLS");return;
     }
-    active_=true;retryMs_=1000;received_.clear();open();
+    active_=true;everAuthenticated_=false;retryMs_=1000;received_.clear();open();
 }
 void ChatClientHsx::stop(){active_=false;retry_.stop();lost("未连接",false);options_.password.clear();user_.clear();}
 void ChatClientHsx::open() {
@@ -80,11 +80,11 @@ void ChatClientHsx::lost(const QString& reason,bool retry){
     const auto commands=commands_.keys();commands_.clear();for(const auto& id:commands)emit workspaceResult(id,{{"ok",false},{"detail","连接中断，操作结果待重新同步；请勿重复提交"}});
     const bool was=authenticated_;authenticated_=false;if(was)emit authenticatedChanged(false);
     const auto ids=pending_.keys();pending_.clear();for(const auto& id:ids)emit messageResult(id,false,"连接中断，送达状态未知；不会自动重发");
-    if(active_&&retry){emit stateChanged((options_.workspace?QString("连接暂不可用"):reason)+QString(" · %1 秒后自动重连").arg(retryMs_/1000));
-        // Before the first authentication a dropped connection is the login failure itself;
-        // the login dialog only reacts to problem(), so retrying in silence would hang it.
-        if(!was&&options_.workspace)emit problem(reason);
-        retry_.start(retryMs_);retryMs_=std::min(retryMs_*2,30000);}
+    // Until this session has authenticated once, a dropped workspace connection is the login failure
+    // itself: report it through problem() and stop. Retrying would hang the login dialog, or sign in
+    // silently in the background after the dialog already reported a failure.
+    const bool initial=options_.workspace&&!everAuthenticated_;
+    if(active_&&retry&&!initial){emit stateChanged((options_.workspace?QString("连接暂不可用"):reason)+QString(" · %1 秒后自动重连").arg(retryMs_/1000));retry_.start(retryMs_);retryMs_=std::min(retryMs_*2,30000);}
     else{const bool notify=active_;active_=false;retry_.stop();options_.password.clear();emit stateChanged(reason);if(notify&&options_.workspace)emit problem(reason);}
 }
 void ChatClientHsx::read(){
@@ -101,7 +101,7 @@ void ChatClientHsx::handle(const QJsonObject& message){
         if(!data.value("ok").toBool()){emit problem(data.value("detail").toString("登录失败："+explain(data.value("code").toString())));lost("登录失败，请检查远程账号",false);return;}
         user_=data.value("userId").toString();if(options_.workspace?!validUser(user_):user_!=options_.username){lost("登录身份不匹配",false);return;}
         if(options_.workspace&&(data["admin"].toBool()!=options_.administrator)){lost("管理员身份校验不匹配",false);return;}
-        options_.registerAccount=false;authenticated_=true;retryMs_=1000;lastHeartbeat_=clock_.elapsed();emit stateChanged(options_.administrator?"已连接 · 管理数据实时同步":options_.workspace?"已连接 · 消息实时同步":"已连接 · "+user_+(options_.tls?" · TLS 加密":" · 本机明文测试"));emit authenticatedChanged(true);
+        options_.registerAccount=false;authenticated_=everAuthenticated_=true;retryMs_=1000;lastHeartbeat_=clock_.elapsed();emit stateChanged(options_.administrator?"已连接 · 管理数据实时同步":options_.workspace?"已连接 · 消息实时同步":"已连接 · "+user_+(options_.tls?" · TLS 加密":" · 本机明文测试"));emit authenticatedChanged(true);
         emit fileSession(data["files"].toObject());
     }else if(type=="file_notice"&&authenticated_&&options_.workspace){
         if(message["recipientId"].toString()!=user_||!validId(data["fileId"].toString())){lost("文件通知身份无效",false);return;}emit fileNotice();
