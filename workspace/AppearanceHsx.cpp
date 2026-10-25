@@ -14,6 +14,9 @@ QJsonArray AppearanceHsx::catalog(const QString& kind) {
         style("aurora","极光流彩",3,"#b3eee2","#d4c4ff","#425b72","aurora"),style("galaxy","银河漫游",3,"#41497e","#7461a3","#ffffff","stars"),
         style("gold","云境鎏金",4,"#ffedb2","#efd4a2","#7d5930","gold"),style("prism","琉璃幻境",4,"#eec7ff","#adf5ed","#574678","prism")};
     if(kind=="frame")return {style("none","自然头像",0,"#ffffff","#ffffff","#ffffff"),style("mint","青芽环",1,"#70cba3","#a8ead2","#ffffff"),style("rose","月汐环",2,"#ed91bd","#b8a3fa","#ffffff"),style("star","星河环",3,"#798be8","#89dfec","#ffffff"),style("gold","云境金环",4,"#d7a74a","#ffe8a4","#ffffff")};
+    // Clothing drawn over the fire buddy; a/b are the main and highlight colours, ink is the trim.
+    if(kind=="outfit")return {style("none","素颜火苗",0,"#ffffff","#ffffff","#ffffff"),style("scarf","暖冬围巾",0,"#e2574c","#ffd9c7","#b8382f"),style("bow","蝴蝶结",0,"#f27aa8","#ffd0e2","#c9467b"),
+        style("straw","夏日草帽",1,"#f0cf86","#d7a24e","#e2574c"),style("glasses","圆框眼镜",1,"#33405a","#bfe3ff","#33405a"),style("headphones","音乐耳机",2,"#7a86e8","#dfe3ff","#4c58b8"),style("crown","星河王冠",3,"#f6c443","#fff2b3","#d65a7a")};
     if(kind=="pet")return {style("flame","暖橙小火人",0,"#ff963b","#ffd56e","#603d29"),style("mint","薄荷精灵",1,"#52c7a8","#bcf2bb","#325b4f"),style("pink","樱粉小火人",2,"#eb80ac","#ffd0e8","#6b3e57"),style("violet","星焰精灵",3,"#9b81ed","#d6c8ff","#4c3e75"),style("gold","鎏金守护者",4,"#e7ad3d","#fff3a9","#694918")};
     return {};
 }

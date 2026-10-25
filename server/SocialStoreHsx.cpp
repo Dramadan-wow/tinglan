@@ -85,7 +85,7 @@ QJsonObject SocialStoreHsx::appearances()const{
         const int actor=q.value(0).toInt();if(!data_.users().count(actor))continue;
         auto p=QJsonDocument::fromJson(q.value(1).toByteArray()).object();
         const int tier=member(actor)["tier"].toInt();
-        for(const auto* kind:{"bubble","frame","pet"}){
+        for(const auto* kind:{"bubble","frame","pet","outfit"}){
             const auto chosen=AppearanceHsx::item(kind,p[kind].toString());
             if(chosen.isEmpty()||chosen["tier"].toInt()>tier)p[kind]=AppearanceHsx::catalog(kind).first().toObject()["id"];
         }
@@ -110,7 +110,7 @@ bool SocialStoreHsx::command(int actor,const QJsonObject& a,QJsonObject& result)
         auto p=exists?QJsonDocument::fromJson(q.value(0).toByteArray()).object():QJsonObject{};
         const auto patch=a["profile"].toObject();require(a["profile"].isObject(),"装扮格式无效");
         for(auto it=patch.begin();it!=patch.end();++it){
-            const auto kind=it.key();require(QStringList{"bubble","frame","pet","avatar"}.contains(kind)&&it.value().isString(),"不支持的装扮字段");
+            const auto kind=it.key();require(QStringList{"bubble","frame","pet","outfit","avatar"}.contains(kind)&&it.value().isString(),"不支持的装扮字段");
             if(kind!="avatar"){
                 const auto style=AppearanceHsx::item(kind,it.value().toString());require(!style.isEmpty(),"装扮不存在");
                 require(style["tier"].toInt()<=member(actor)["tier"].toInt(),"此装扮需开通对应会员后使用");p[kind]=it.value();

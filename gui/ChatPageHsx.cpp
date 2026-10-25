@@ -12,6 +12,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDateTime>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFrame>
 #include <QFontMetrics>
@@ -77,11 +78,13 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     subtitle_=new QLabel("从左侧选择好友或群组");subtitle_->setTextFormat(Qt::PlainText);subtitle_->setWordWrap(true);subtitle_->setObjectName("chatSubtitle");subtitle_->setMaximumHeight(36);names->addWidget(subtitle_);top->addLayout(names,1);
     auto iconButton=[&](const QString& icon,const QString& tooltip){auto* button=new QPushButton;button->setObjectName("chatIcon");button->setFixedSize(32,34);button->setIcon(IconHsx::get(icon,"#6382aa","#1689ff"));button->setIconSize(QSize(22,22));button->setToolTip(tooltip);button->setAccessibleName(tooltip);button->setCursor(Qt::PointingHandCursor);return button;};
     auto* searchButton=iconButton("search","搜索聊天记录");top->addWidget(searchButton);
-    auto* detailsButton=iconButton("user","显示或收起会话资料");detailsButton->setObjectName("toggleContactDetails");detailsButton->setStyleSheet("padding:0;border:none;background:transparent;");detailsButton->setCheckable(true);detailsButton->setChecked(true);top->addWidget(detailsButton);rl->addWidget(header);
+    auto* detailsButton=iconButton("user","显示或收起会话资料");detailsButton->setObjectName("toggleContactDetails");detailsButton->setStyleSheet("padding:0;border:none;background:transparent;");detailsButton->setCheckable(true);detailsButton->setChecked(false);detailsToggle_=detailsButton;top->addWidget(detailsButton);rl->addWidget(header);
     filters_=new QWidget;auto* filters=new QHBoxLayout(filters_);filters->setContentsMargins(18,9,18,9);
     search_=new QLineEdit;search_->setPlaceholderText("搜索当前会话的聊天记录");search_->setAccessibleName("搜索当前会话消息");search_->setClearButtonEnabled(true);search_->addAction(IconHsx::get("search","#8ca1be"),QLineEdit::LeadingPosition);filters->addWidget(search_);rl->addWidget(filters_);filters_->hide();
     connect(searchButton,&QPushButton::clicked,this,[this]{filters_->setVisible(filters_->isHidden());if(filters_->isVisible())search_->setFocus();else search_->clear();});
     scroll_=new QScrollArea;scroll_->setWidgetResizable(true);scroll_->setFrameShape(QFrame::NoFrame);scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);content_=new ChatBackdropHsx;bubbles_=new QVBoxLayout(content_);bubbles_->setContentsMargins(16,20,16,20);bubbles_->setSpacing(13);scroll_->setWidget(content_);rl->addWidget(scroll_,1);
+    // The fire buddy floats over the message area (a viewport child, so it does not scroll with the messages).
+    buddy_=new FireBuddyHsx(scroll_->viewport(),FireBuddyHsx::Mode::Floating);buddy_->hide();
     older_=new QPushButton("加载更早的消息");older_->setObjectName("quietButton");rl->addWidget(older_);
     auto* composerArea=new QWidget;auto* composerLayout=new QVBoxLayout(composerArea);composerLayout->setContentsMargins(14,9,14,10);composerLayout->setSpacing(6);
     auto* composerFrame=new QFrame;composerFrame->setObjectName("composerFrame");auto* bottom=new QHBoxLayout(composerFrame);bottom->setContentsMargins(9,8,9,8);bottom->setSpacing(5);
@@ -108,7 +111,6 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     auto* manage=new QPushButton("管理会话");manage->setIcon(IconHsx::get("users","#1689ff"));manage->setStyleSheet("padding:13px 7px;");connect(manage,&QPushButton::clicked,this,[this]{emit openSection(target_&&kind_==MessageKindHsx::Group?2:1);});quick->addWidget(manage);pl->addLayout(quick);
     auto* section=new QLabel("相逢的记录");section->setObjectName("contactSection");pl->addWidget(section);
     contactStats_=new QLabel;contactStats_->setObjectName("contactStats");contactStats_->setWordWrap(true);pl->addWidget(contactStats_);
-    buddy_=new FireBuddyHsx;buddy_->hide();pl->addWidget(buddy_);
     auto* historyButton=new QPushButton("聊天记录");historyButton->setObjectName("contactAction");historyButton->setIcon(IconHsx::get("chat","#6585ad"));pl->addWidget(historyButton);connect(historyButton,&QPushButton::clicked,this,[this]{filters_->show();search_->setFocus();});
     auto* exportButton=new QPushButton("导出记录");exportButton->setObjectName("contactAction");exportButton->setIcon(IconHsx::get("download","#6585ad"));pl->addWidget(exportButton);
     auto* studioButton=new QPushButton("气泡与背景装扮");studioButton->setObjectName("contactAction");studioButton->setIcon(IconHsx::get("palette","#6585ad"));pl->addWidget(studioButton);connect(studioButton,&QPushButton::clicked,this,&ChatPageHsx::openStudio);
@@ -116,6 +118,8 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     reflow_=new QTimer(this);reflow_->setSingleShot(true);reflow_->setInterval(80);
     connect(reflow_,&QTimer::timeout,this,[this]{if(!active_||renderedWidth_==scroll_->viewport()->width())return;const auto* bar=scroll_->verticalScrollBar();const double position=bar->maximum()?double(bar->value())/bar->maximum():1;showHistory();QTimer::singleShot(0,this,[this,position]{auto* bar=scroll_->verticalScrollBar();bar->setValue(qRound(position*bar->maximum()));});});
     connect(&session_,&AppSessionHsx::operationRejected,this,[this](const QJsonObject& request){if(request["op"]=="chat.send"&&request["target"].toInt()==target_&&request["kind"].toInt()==int(kind_)&&request["service"].toInt()==int(session_.service())&&composer_->text().isEmpty())composer_->setText(request["text"].toString());});
+    // Contact details stay out of the way until asked for: the header button, avatar or name opens them.
+    panel->hide();for(auto* opener:{static_cast<QWidget*>(headerAvatar_),static_cast<QWidget*>(title_)}){opener->setCursor(Qt::PointingHandCursor);opener->setToolTip("点击查看或收起会话资料");opener->installEventFilter(this);}
     connect(detailsButton,&QPushButton::toggled,panel,&QWidget::setVisible);
     connect(detailsButton,&QPushButton::toggled,this,[this]{reflow_->start();});
     connect(profileButton_,&QPushButton::clicked,this,[this]{if(target_)QMessageBox::information(this,"会话资料",contactName_->text()+"\n\n"+contactDetails_->property("plainText").toString()+"\n\n"+contactStats_->text());});
@@ -125,6 +129,10 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     connect(exportButton,&QPushButton::clicked,this,[this]{if(!target_)return;const auto file=QFileDialog::getSaveFileName(this,"导出聊天记录","聊天记录.txt","文本文件 (*.txt)");if(file.isEmpty())return;try{session_.messages().exportHistory(session_.user(),session_.service(),kind_,target_,S::path(file));QMessageBox::information(this,"导出完成","聊天记录已保存");}catch(const std::exception& e){QMessageBox::warning(this,"导出失败",S::q(e.what()));}});
 }
 void ChatPageHsx::resizeEvent(QResizeEvent* event){QWidget::resizeEvent(event);if(reflow_)reflow_->start();}
+bool ChatPageHsx::eventFilter(QObject* watched,QEvent* event){
+    if((watched==headerAvatar_||watched==title_)&&event->type()==QEvent::MouseButtonRelease&&target_){detailsToggle_->toggle();return true;}
+    return QWidget::eventFilter(watched,event);
+}
 void ChatPageHsx::setActive(bool active){active_=active;if(active)showHistory();}
 void ChatPageHsx::refresh() {
     if(user_!=session_.user()||service_!=session_.service()){target_=0;user_=session_.user();service_=session_.service();search_->clear();conversationSearch_->clear();}
@@ -150,7 +158,7 @@ void ChatPageHsx::showHistory() {
     while(auto* item=bubbles_->takeAt(0)){if(item->widget())delete item->widget();delete item;}
     composer_->setEnabled(target_!=0);send_->setEnabled(target_!=0);mentions_->setVisible(target_&&kind_==MessageKindHsx::Group);older_->hide();refreshDetails();
     file_->setEnabled(target_&&kind_==MessageKindHsx::Private&&session_.files().available());file_->setToolTip(kind_==MessageKindHsx::Group?"群文件将在后续版本开放":session_.files().available()?"发送文件（支持断点续传）":"需要中心服务器启用 HTTPS 文件服务");
-    static_cast<ChatBackdropHsx*>(content_)->setBackground(session_.studio().media(session_.user(),"background"));buddy_->setVisible(target_&&kind_==MessageKindHsx::Private);if(target_&&kind_==MessageKindHsx::Private)buddy_->setState(session_.studio().streak(target_),StudioStoreHsx::item("pet",session_.studio().choice(session_.user(),"pet")));
+    static_cast<ChatBackdropHsx*>(content_)->setBackground(session_.studio().media(session_.user(),"background"));buddy_->setVisible(target_&&kind_==MessageKindHsx::Private);if(target_&&kind_==MessageKindHsx::Private){buddy_->setState(session_.studio().streak(target_),StudioStoreHsx::item("pet",session_.studio().choice(session_.user(),"pet")));buddy_->setOutfit(StudioStoreHsx::item("outfit",session_.studio().choice(session_.user(),"outfit")));}
     if(!target_){
         title_->setText("山水有相逢");subtitle_->setText("选择一位好友，让故事从一句问候开始");
         auto* empty=new QWidget;auto* layout=new QVBoxLayout(empty);layout->setAlignment(Qt::AlignCenter);layout->setSpacing(18);

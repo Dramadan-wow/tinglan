@@ -46,7 +46,7 @@ QJsonObject StudioStoreHsx::profile(int user) const {
     if(session_.remote()){
         // Theme/background stay on this computer; public identity comes only from the server.
         auto shared=session_.social()["appearances"].toObject()[QString::number(user)].toObject();
-        for(const auto* kind:{"avatar","bubble","frame","pet","tier","expires"})p.remove(kind);
+        for(const auto* kind:{"avatar","bubble","frame","pet","outfit","tier","expires"})p.remove(kind);
         for(auto it=shared.begin();it!=shared.end();++it)p[it.key()]=it.value();
     }return p;
 }
@@ -77,7 +77,7 @@ QPixmap StudioStoreHsx::avatar(int user)const{
 void StudioStoreHsx::syncLegacyAppearance(){
     const int user=actor();if(session_.social()["appearances"].toObject().contains(QString::number(user)))return;
     const auto old=root_["profiles"].toObject()[QString::number(user)].toObject();QJsonObject patch;
-    for(const auto* kind:{"bubble","frame","pet"}){
+    for(const auto* kind:{"bubble","frame","pet","outfit"}){
         const auto id=old[kind].toString();const auto style=item(kind,id);
         if(!style.isEmpty()&&style["tier"].toInt()<=membership(user)["tier"].toInt())patch[kind]=id;
     }

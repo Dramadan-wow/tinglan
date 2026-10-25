@@ -17,6 +17,7 @@ signals:
     void openSection(int page);
 protected:
     void resizeEvent(QResizeEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 private:
     void showHistory();
     void refreshDetails();
@@ -26,7 +27,7 @@ private:
     QLineEdit *search_, *composer_, *conversationSearch_;
     QLabel *title_, *subtitle_, *headerAvatar_, *contactName_, *contactDetails_, *contactStats_;
     QWidget *contactPanel_, *contactArtwork_, *filters_;
-    QPushButton* profileButton_;
+    QPushButton *profileButton_, *detailsToggle_ = nullptr;
     QScrollArea* scroll_;
     QWidget* content_;
     QVBoxLayout* bubbles_;

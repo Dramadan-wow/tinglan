@@ -20,10 +20,11 @@ private:
     AppSessionHsx& session_;
     QTabWidget* tabs_;
     QLabel *status_,*avatar_,*background_,*price_,*benefits_,*orderHint_;
-    QComboBox *plan_,*frame_,*pet_;
+    QComboBox *plan_,*frame_;
     QLineEdit* reference_;
     QTableWidget* orders_;
     FireBuddyHsx* petPreview_;
-    QMap<QString,QPushButton*> bubbles_,themes_;
+    QMap<QString,QPushButton*> bubbles_,themes_,skins_,outfits_;
+    QMap<QString,FireBuddyHsx*> skinSamples_,outfitSamples_;
 };
 }
