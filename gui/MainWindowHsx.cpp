@@ -56,13 +56,17 @@ MainWindowHsx::MainWindowHsx(AppSessionHsx& s,QWidget* parent):QMainWindow(paren
     weiboInbox_=new QPushButton("  ✉  微博私信");weiboInbox_->setObjectName("weiboInboxNav");side->addWidget(weiboInbox_);
     connect(weiboFollowing_,&QPushButton::clicked,this,[this]{navigate(8);weibo_->showFollowing();});
     connect(weiboInbox_,&QPushButton::clicked,this,[this]{navigate(8);weibo_->showInbox();});
-    side->addStretch();auto* quote=new QLabel("山水有相逢。");quote_=quote;quote->setStyleSheet("font-family:'SimSun';font-size:12px;color:#8ba5c6;padding:4px 12px;line-height:150%;");side->addWidget(quote);side->addSpacing(12);
+    side->addStretch();
     layout->addWidget(sidebar);
     auto* area=new QWidget;auto* areaLayout=new QVBoxLayout(area);areaLayout->setContentsMargins(0,0,0,0);areaLayout->setSpacing(0);
-    auto* header=new QFrame;header->setObjectName("header");header_=header;auto* h=new QHBoxLayout(header);h->setContentsMargins(29,23,29,21);auto* heading=new QVBoxLayout;heading->setSpacing(7);
+    auto* header=new QFrame;header->setObjectName("header");header_=header;auto* h=new QHBoxLayout(header);h->setContentsMargins(29,20,29,18);
+    pageIcon_=new QLabel;pageIcon_->setObjectName("pageIcon");pageIcon_->setFixedSize(48,48);pageIcon_->setAlignment(Qt::AlignCenter);h->addWidget(pageIcon_);h->addSpacing(14);auto* heading=new QVBoxLayout;heading->setSpacing(6);
     title_=new QLabel;title_->setObjectName("pageTitle");title_->setStyleSheet("font-size:23px;");caption_=new QLabel;caption_->setObjectName("muted");heading->addWidget(title_);heading->addWidget(caption_);h->addLayout(heading,1);
-    auto* serviceLabel=new QLabel("当前服务");serviceLabel->setObjectName("muted");side->addWidget(serviceLabel);services_=new QComboBox;services_->setObjectName("activeService");services_->setFixedWidth(98);auto* serviceRow=new QHBoxLayout;serviceRow->addWidget(services_);
-    auto* switchUser=new QPushButton;switchUser->setObjectName("switchAccount");switchUser->setIcon(IconHsx::get("exit","#84987c"));switchUser->setIconSize(QSize(19,19));switchUser->setToolTip("切换账号 / 登出");switchUser->setAccessibleName("切换账号 / 登出");switchUser->setFixedSize(40,40);serviceRow->addWidget(switchUser);side->addLayout(serviceRow);areaLayout->addWidget(header);
+    // Current service and sign-out share one small card at the foot of the sidebar, above the closing line.
+    auto* serviceCard=new QFrame;serviceCard->setObjectName("sidebarService");auto* serviceLayout=new QVBoxLayout(serviceCard);serviceLayout->setContentsMargins(10,8,8,8);serviceLayout->setSpacing(6);
+    auto* serviceLabel=new QLabel("当前服务");serviceLayout->addWidget(serviceLabel);services_=new QComboBox;services_->setObjectName("activeService");services_->setMinimumWidth(0);auto* serviceRow=new QHBoxLayout;serviceRow->setSpacing(6);serviceRow->addWidget(services_,1);
+    auto* switchUser=new QPushButton;switchUser->setObjectName("switchAccount");switchUser->setIcon(IconHsx::get("exit","#84987c"));switchUser->setIconSize(QSize(19,19));switchUser->setToolTip("切换账号 / 登出");switchUser->setAccessibleName("切换账号 / 登出");switchUser->setFixedSize(40,40);serviceRow->addWidget(switchUser);serviceLayout->addLayout(serviceRow);side->addWidget(serviceCard);
+    auto* quote=new QLabel("山水有相逢。");quote_=quote;quote->setAlignment(Qt::AlignCenter);quote->setStyleSheet("font-family:'SimSun';font-size:12px;color:#8ba5c6;padding:10px 0 2px 0;letter-spacing:2px;");side->addWidget(quote);areaLayout->addWidget(header);
     pages_=new QStackedWidget;pages_->setObjectName("mainPages");chat_=new ChatPageHsx(s);friends_=new FriendsPageHsx(s);groups_=new GroupsPageHsx(s);requests_=new RequestsPageHsx(s);accounts_=new AccountsPageHsx(s);data_=new DataPageHsx(s);network_=new NetworkPageHsx(this);network_->hide();feed_=new FeedPageHsx(s,this);weibo_=new FeedPageHsx(s,this,"weibo");studio_=new StudioPageHsx(s);
     for(QWidget* page:std::initializer_list<QWidget*>{chat_,friends_,groups_,requests_,accounts_,data_,feed_,studio_,weibo_})pages_->addWidget(page);
     auto* body=new QWidget;auto* bodyLayout=new QVBoxLayout(body);bodyLayout_=bodyLayout;bodyLayout->setContentsMargins(26,24,26,22);bodyLayout->addWidget(pages_);areaLayout->addWidget(body,1);layout->addWidget(area,1);
@@ -83,7 +87,7 @@ MainWindowHsx::MainWindowHsx(AppSessionHsx& s,QWidget* parent):QMainWindow(paren
     refresh();navigate(session_.service()==ServiceHsx::Weibo?8:0);
 }
 void MainWindowHsx::refresh(){if(!session_.signedIn())return;const auto theme=session_.studio().choice(session_.user(),"theme");const bool blog=session_.service()==ServiceHsx::Weibo;const bool serviceChanged=displayedService_!=session_.service();
-    if(currentTheme_!=theme||serviceChanged){currentTheme_=theme;ThemeHsx::install(*qApp,theme);setStyleSheet(ThemeHsx::workspace(theme)+(blog?weiboChrome():QString{}));}
+    if(currentTheme_!=theme||serviceChanged){currentTheme_=theme;ThemeHsx::install(*qApp,theme);setStyleSheet(ThemeHsx::workspace(theme)+(blog?weiboChrome():QString{}));qApp->setProperty("tinglanAccent",ThemeHsx::accent(theme));updatePageIcon();}
     for(int i=0;i<9;++i)navigation_[i]->setVisible(i==8?blog:(!blog||i==4||i==5||i==7));
     weiboFollowing_->setVisible(blog);weiboInbox_->setVisible(blog);navigation_[8]->setText("  微博首页");
     brand_->setText(blog?"绚色微博":"听澜");wordmark_->setText(blog?"    YVONNE / WEIBO":"       T I N G L A N");quote_->setText(blog?"灵感，正在连线。":"山水有相逢。");sideCategory_->setText(blog?"   频道与个人空间":"   我的听澜");
@@ -92,6 +96,10 @@ void MainWindowHsx::refresh(){if(!session_.signedIn())return;const auto theme=se
     if(serviceChanged){displayedService_=session_.service();navigate(blog?8:0);if(blog)weibo_->showHome();}
     AvatarHsx icon(session_.studio(),session_.user(),AppSessionHsx::q(session_.data().user(session_.user()).name()),48);avatar_->setPixmap(icon.grab());studio_->refresh();QSignalBlocker guard(services_);services_->clear();for(const auto& entry:session_.data().user(session_.user()).services())if(activeService(entry.first))services_->addItem(AppSessionHsx::q(serviceName(entry.first)),static_cast<int>(entry.first));services_->setCurrentIndex(services_->findData(static_cast<int>(session_.service())));user_->setText(AppSessionHsx::q(session_.data().user(session_.user()).name()));chat_->refresh();friends_->refresh();groups_->refresh();requests_->refresh();accounts_->refresh();data_->refresh();feed_->refresh();weibo_->refresh();counters();}
 void MainWindowHsx::counters(){const int counts[]={session_.unreadCount(),session_.requestCount()};for(int i=0;i<2;++i){badges_[i]->setText(counts[i]>99?"99+":QString::number(counts[i]));badges_[i]->setVisible(counts[i]>0);}}
-void MainWindowHsx::navigate(int page){if(page<0||page>=9)return;const bool blog=session_.service()==ServiceHsx::Weibo;if(page==8&&!blog)return;if(blog&&(page<=3||page==6))page=8;chat_->setActive(page==0);pages_->setCurrentIndex(page);header_->setVisible(page!=0);bodyLayout_->setContentsMargins(page==0?0:22,page==0?0:20,page==0?0:22,page==0?0:20);navigation_[page]->setChecked(true);title_->setText(page==8?"微博 / 绚色共振":titles[page]);caption_->setText(page==8?"发现  ·  关注  ·  与同频的人交换灵感":captions[page]);}
+void MainWindowHsx::navigate(int page){if(page<0||page>=9)return;const bool blog=session_.service()==ServiceHsx::Weibo;if(page==8&&!blog)return;if(blog&&(page<=3||page==6))page=8;chat_->setActive(page==0);pages_->setCurrentIndex(page);header_->setVisible(page!=0);bodyLayout_->setContentsMargins(page==0?0:22,page==0?0:20,page==0?0:22,page==0?0:20);navigation_[page]->setChecked(true);title_->setText(page==8?"微博 / 绚色共振":titles[page]);caption_->setText(page==8?"发现  ·  关注  ·  与同频的人交换灵感":captions[page]);updatePageIcon();}
+void MainWindowHsx::updatePageIcon(){
+    const int page=pages_->currentIndex();if(page<0||page>=9)return;const bool blog=session_.service()==ServiceHsx::Weibo;
+    pageIcon_->setStyleSheet(QString("background:%1;border-radius:15px;").arg(blog?"#f8e6f0":"#e6f1ff"));pageIcon_->setPixmap(IconHsx::get(icons[page],blog?"#c45c93":ThemeHsx::accent(currentTheme_)).pixmap(QSize(24,24),devicePixelRatioF()));
+}
 void MainWindowHsx::closeEvent(QCloseEvent* event){if(!session_.save()&&!UiHsx::confirm(this,"保存失败。确定关闭并丢弃尚未保存的改动？")){event->ignore();return;}network_->stop();event->accept();}
 }

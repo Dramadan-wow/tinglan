@@ -32,6 +32,14 @@
 namespace im {
 using S=AppSessionHsx;
 namespace {
+// "地区   北京" style lines become an aligned key/value table with room between rows; other lines stay as text.
+QString detailTable(const QString& plain){
+    QString rows;
+    for(const auto& line:plain.split('\n')){const int split=line.indexOf("   ");
+        if(split<0){rows+=QString("<tr><td colspan='2' style='padding:3px 0;color:#778daa;'>%1</td></tr>").arg(line.toHtmlEscaped());continue;}
+        rows+=QString("<tr><td style='padding:4px 16px 4px 0;color:#9aabc2;white-space:nowrap;'>%1</td><td style='padding:4px 0;color:#2b4263;'>%2</td></tr>").arg(line.left(split).toHtmlEscaped(),line.mid(split).trimmed().toHtmlEscaped());}
+    return "<table cellspacing='0' cellpadding='0'>"+rows+"</table>";
+}
 // The cover is decorative; it is not presented as media sent by a contact.
 class ContactArtworkHsx final : public QWidget {
 public:
@@ -94,7 +102,7 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     auto* pl=new QVBoxLayout(panelContent);pl->setContentsMargins(14,12,14,16);pl->setSpacing(11);
     contactArtwork_=new ContactArtworkHsx;pl->addWidget(contactArtwork_);
     contactName_=new QLabel;contactName_->setObjectName("contactName");contactName_->setTextFormat(Qt::PlainText);contactName_->setWordWrap(true);pl->addWidget(contactName_);
-    contactDetails_=new QLabel;contactDetails_->setObjectName("contactDetails");contactDetails_->setTextFormat(Qt::PlainText);contactDetails_->setWordWrap(true);pl->addWidget(contactDetails_);
+    contactDetails_=new QLabel;contactDetails_->setObjectName("contactDetails");contactDetails_->setTextFormat(Qt::RichText);contactDetails_->setWordWrap(true);pl->addWidget(contactDetails_);
     auto* quote=new QLabel("山不见我，我自去见山。");quote->setObjectName("contactQuote");quote->setWordWrap(true);pl->addWidget(quote);
     auto* quick=new QHBoxLayout;quick->setSpacing(7);profileButton_=new QPushButton("查看资料");profileButton_->setIcon(IconHsx::get("user","#1689ff"));profileButton_->setStyleSheet("padding:13px 7px;");quick->addWidget(profileButton_);
     auto* manage=new QPushButton("管理会话");manage->setIcon(IconHsx::get("users","#1689ff"));manage->setStyleSheet("padding:13px 7px;");connect(manage,&QPushButton::clicked,this,[this]{emit openSection(target_&&kind_==MessageKindHsx::Group?2:1);});quick->addWidget(manage);pl->addLayout(quick);
@@ -110,7 +118,7 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     connect(&session_,&AppSessionHsx::operationRejected,this,[this](const QJsonObject& request){if(request["op"]=="chat.send"&&request["target"].toInt()==target_&&request["kind"].toInt()==int(kind_)&&request["service"].toInt()==int(session_.service())&&composer_->text().isEmpty())composer_->setText(request["text"].toString());});
     connect(detailsButton,&QPushButton::toggled,panel,&QWidget::setVisible);
     connect(detailsButton,&QPushButton::toggled,this,[this]{reflow_->start();});
-    connect(profileButton_,&QPushButton::clicked,this,[this]{if(target_)QMessageBox::information(this,"会话资料",contactName_->text()+"\n\n"+contactDetails_->text()+"\n\n"+contactStats_->text());});
+    connect(profileButton_,&QPushButton::clicked,this,[this]{if(target_)QMessageBox::information(this,"会话资料",contactName_->text()+"\n\n"+contactDetails_->property("plainText").toString()+"\n\n"+contactStats_->text());});
     connect(conversations_,&QListWidget::currentItemChanged,this,[this](QListWidgetItem* item){if(!item)return;kind_=static_cast<MessageKindHsx>(item->data(Qt::UserRole).toInt());target_=item->data(Qt::UserRole+1).toInt();limit_=40;showHistory();});
     connect(conversationSearch_,&QLineEdit::textChanged,this,[this](const QString& term){for(int i=0;i<conversations_->count();++i){auto* item=conversations_->item(i);item->setHidden(!(item->data(Qt::UserRole+2).toString()+item->data(Qt::UserRole+3).toString()).contains(term,Qt::CaseInsensitive));}});
     connect(search_,&QLineEdit::textChanged,this,[this]{showHistory();});connect(favorites_,&QCheckBox::toggled,this,[this]{showHistory();});connect(send_,&QPushButton::clicked,this,[this]{send();});connect(composer_,&QLineEdit::returnPressed,this,[this]{send();});connect(older_,&QPushButton::clicked,this,[this]{limit_+=40;showHistory();});
@@ -126,7 +134,7 @@ void ChatPageHsx::refresh() {
         QString preview=history.empty()?detail:history.back()->recalled()?"消息已撤回":S::q(history.back()->text());
         const auto files=kind==MessageKindHsx::Private?session_.files().cards(int(service_),target):QJsonArray{};
         if(!files.isEmpty()&&(history.empty()||files.last().toObject()["created"].toDouble()>=history.back()->created()))preview="[文件] "+files.last().toObject()["name"].toString();
-        auto* item=new QListWidgetItem(name+"\n"+preview,conversations_);item->setData(Qt::UserRole,static_cast<int>(kind));item->setData(Qt::UserRole+1,target);item->setData(Qt::UserRole+2,name);item->setData(Qt::UserRole+3,preview);item->setData(Qt::UserRole+4,unread);item->setData(Qt::UserRole+5,history.empty()?QString{}:QDateTime::fromSecsSinceEpoch(history.back()->created()).toString("HH:mm"));item->setSizeHint(QSize(0,86));if(kind==MessageKindHsx::Private){AvatarHsx icon(session_.studio(),target,name,52);item->setData(Qt::UserRole+6,icon.grab());}
+        auto* item=new QListWidgetItem(name+"\n"+preview,conversations_);item->setData(Qt::UserRole,static_cast<int>(kind));item->setData(Qt::UserRole+1,target);item->setData(Qt::UserRole+2,name);item->setData(Qt::UserRole+3,preview);item->setData(Qt::UserRole+4,unread);item->setData(Qt::UserRole+5,history.empty()?QString{}:QDateTime::fromSecsSinceEpoch(history.back()->created()).toString("HH:mm"));item->setSizeHint(QSize(0,80));if(kind==MessageKindHsx::Private){AvatarHsx icon(session_.studio(),target,name,52);item->setData(Qt::UserRole+6,icon.grab());}
         item->setHidden(!(name+preview).contains(conversationSearch_->text(),Qt::CaseInsensitive));if(kind==kind_&&target==target_)conversations_->setCurrentItem(item);
     };
     for(const auto& [id,friendship]:account.friends()){const auto& user=session_.data().user(id);add(S::q(friendship.remark().empty()?user.name():friendship.remark()),MessageKindHsx::Private,id,"好友 · "+S::q(serviceName(friendship.contact())));}
@@ -194,7 +202,7 @@ void ChatPageHsx::refreshDetails() {
         int stars=0;const auto history=session_.messages().history(user_,service_,kind_,target_);for(const auto* message:history)if(message->starred(user_))++stars;
         contactStats_->setText(QString("%1 条消息    ·    %2 条收藏").arg(history.size()).arg(stars));
     } else {face=IconHsx::get("brand","#1689ff").pixmap(80,80);contactStats_->setText("从一句问候，开始新的故事。");}
-    contactName_->setText(name);contactDetails_->setText(details);
+    contactName_->setText(name);contactDetails_->setProperty("plainText",details);contactDetails_->setText(detailTable(details));
     const auto dpr=devicePixelRatioF();auto headerFace=face.scaled(qRound(48*dpr),qRound(48*dpr),Qt::KeepAspectRatio,Qt::SmoothTransformation);headerFace.setDevicePixelRatio(dpr);headerAvatar_->setPixmap(headerFace);
     static_cast<ContactArtworkHsx*>(contactArtwork_)->setFace(face);
 }

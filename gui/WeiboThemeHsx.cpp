@@ -26,7 +26,10 @@ QPushButton#weiboInboxNav:hover,QPushButton#weiboFollowingNav:hover {background:
 QFrame#header {background:#faf5fb;border-bottom:1px solid #ebddeb;}
 QLabel#pageTitle {color:#4b2e51;}
 QComboBox#activeService {background:#3d3049;color:#faddf0;border:1px solid #65506f;}
+QFrame#sidebarProfile,QFrame#sidebarService {background:rgba(255,255,255,14);border:1px solid #3d3049;}
+QFrame#sidebarService QLabel {color:#b99bb8;}
 QStatusBar {background:#eee5f2;color:#725d7b;}
+QLabel#connectionState {color:#8d4f75;background:#f6e3ee;}
 )";}
 QString weiboContentStyle(){return R"(
 QWidget#weiboPage {background:#f6f1f8;}

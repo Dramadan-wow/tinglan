@@ -95,14 +95,16 @@ void ThemeHsx::install(QApplication& app,const QString& theme) {
     app.setStyleSheet(sheet);
 }
 
-QString ThemeHsx::workspace(const QString& theme) {
+QString ThemeHsx::accent(const QString& theme) {
     const QMap<QString,QString> accents{{"jade","#1689ff"},{"ocean","#1689ff"},{"lilac","#8164b3"},{"rose","#b66986"},{"amber","#b77b3c"},{"night","#5768ae"}};
+    return accents.value(theme,"#1689ff");
+}
+QString ThemeHsx::workspace(const QString& theme) {
     QString sheet=QString::fromUtf8(R"(
         QWidget {color:#233650;}
         QMainWindow {background:#f5f9ff;}
         QWidget#sidebar {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #f6fbff,stop:1 #e4f0ff);border-right:1px solid #e0ebf8;}
         QWidget#sidebar QLabel#brand {color:#163e70;font-family:'Microsoft YaHei UI';font-size:27px;font-weight:700;letter-spacing:2px;}
-        QFrame#sidebarProfile {background:transparent;border:none;}
         QPushButton#nav {background:transparent;color:#526d91;padding:11px 12px;font-size:14px;border:none;border-radius:10px;}
         QPushButton#nav:hover {background:#e6f1ff;color:#1689ff;}
         QPushButton#nav:checked {background:#d5eaff;color:#1689ff;border:none;}
@@ -141,11 +143,20 @@ QString ThemeHsx::workspace(const QString& theme) {
         QScrollBar::handle:vertical,QScrollBar::handle:horizontal {background:#ccdced;}
         QStatusBar {background:#f4f9ff;color:#8a9fbb;border-top:1px solid #e3edf8;}
         QMenu::item:selected {background:#e8f3ff;color:#1689ff;}
-        QTableWidget {selection-background-color:#e8f3ff;selection-color:#294b72;}
+        QTableWidget {selection-background-color:#e8f3ff;selection-color:#294b72;alternate-background-color:#f8fbff;gridline-color:#edf2f9;}
+        QTableWidget::item {border-bottom:1px solid #eef3fa;}
         QTableWidget::item:selected {background:#e8f3ff;}
-        QHeaderView::section {background:#f1f6fd;color:#7890ae;}
+        QHeaderView::section {background:#f1f6fd;color:#7890ae;font-weight:600;}
+        QFrame#card,QWidget#card {background:#ffffff;border:1px solid #e3ecf8;border-radius:18px;}
+        QFrame#header {background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #f9fbff,stop:1 #eef5ff);}
+        QLabel#pageTitle {letter-spacing:1px;}
+        QFrame#sidebarProfile {background:rgba(255,255,255,165);border:1px solid #e1ecf9;border-radius:16px;}
+        QFrame#sidebarService {background:rgba(255,255,255,140);border:1px solid #e1ecf9;border-radius:14px;}
+        QFrame#sidebarService QLabel {color:#8a9dba;font-size:10px;letter-spacing:1px;}
+        QLabel#connectionState {color:#4f6f96;background:#e7f1fe;border-radius:9px;padding:2px 10px;font-size:10px;}
+        QStatusBar QLabel {font-size:10px;}
     )");
-    sheet.replace("#1689ff",accents.value(theme,"#1689ff"));
+    sheet.replace("#1689ff",accent(theme));
     return sheet;
 }
 }

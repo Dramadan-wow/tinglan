@@ -20,12 +20,13 @@ protected:
 private:
     void refresh();
     void counters();
+    void updatePageIcon();
     AppSessionHsx& session_;
     QStackedWidget* pages_;
     QWidget* header_;
     QVBoxLayout* bodyLayout_;
     QComboBox* services_;
-    QLabel *title_,*caption_,*user_,*avatar_;
+    QLabel *title_,*caption_,*user_,*avatar_,*pageIcon_;
     QString currentTheme_;
     ServiceHsx displayedService_=ServiceHsx::Count;
     QPushButton *weiboInbox_,*weiboFollowing_;
