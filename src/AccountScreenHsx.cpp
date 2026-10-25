@@ -1,5 +1,6 @@
 #include "AccountScreenHsx.h"
 #include "ConsoleHsx.h"
+#include "PasswordHsx.h"
 #include <iostream>
 namespace im {
 void AccountScreenHsx::login() {
@@ -11,7 +12,8 @@ void AccountScreenHsx::registerUser() {
     const int id = ui_.id("用户ID："); const auto name = trim(ui_.text("昵称："));
     const auto birth = trim(ui_.text("出生日期 yyyy-mm-dd：")), location = trim(ui_.text("所在地："));
     const auto type = ui_.chooseService(); const auto number = ui_.number("服务号码：");
-    const auto password = ui_.password("密码："); require(password == ui_.password("确认密码："), "两次密码不一致");
+    const auto password = ui_.password("密码（至少 8 字节）："); require(password == ui_.password("确认密码："), "两次密码不一致");
+    PasswordHsx::check(password);
     const bool shared = false;
     ui_.accounts().registerUser(id, name, birth, location, type, number, password, shared);
     ui_.accounts().login(id, type, password); ui_.session(id, type);
@@ -22,12 +24,13 @@ void AccountScreenHsx::services() {
         {"切换服务", [this] { const auto type = ui_.chooseService(ui_.user()); ui_.session(ui_.user(), type); std::cout << "已切换到 " << serviceName(type) << '\n'; }},
         {"开通服务", [this] {
             const auto type = ui_.chooseService(); const auto number = ui_.number("服务号码：");
-            const auto nick = trim(ui_.text("服务昵称：")), password = ui_.password("密码：");
+            const auto nick = trim(ui_.text("服务昵称：")), password = ui_.password("密码（至少 8 字节）：");
+            PasswordHsx::check(password);
             const bool shared = false;
             ui_.accounts().open(ui_.user(), type, number, nick, password, shared); std::cout << "服务已开通。\n"; }},
         {"昵称与密码", [this] {
-            const auto nick = trim(ui_.text("新服务昵称：")); const auto password = ui_.password("新密码（空保留原密码）："); std::string original;
-            if (!password.empty()) { require(password == ui_.password("确认新密码："), "两次密码不一致"); original = ui_.password("原密码："); }
+            const auto nick = trim(ui_.text("新服务昵称：")); const auto password = ui_.password("新密码（至少 8 字节，空保留原密码）："); std::string original;
+            if (!password.empty()) { require(password == ui_.password("确认新密码："), "两次密码不一致"); PasswordHsx::check(password); original = ui_.password("原密码："); }
             ui_.accounts().edit(ui_.user(), ui_.service(), nick, original, password); std::cout << "资料已更新。\n"; }},
         {"微信绑定QQ", [this] { const auto number = ui_.number("本人QQ号码（0解除绑定）："); ui_.accounts().bind(ui_.user(), number); std::cout << "绑定已更新。\n"; }},
         {"关闭服务", [this] {

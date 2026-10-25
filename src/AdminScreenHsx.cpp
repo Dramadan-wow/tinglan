@@ -1,6 +1,7 @@
 #include "AdminScreenHsx.h"
 #include "AdminManagerHsx.h"
 #include "ConsoleHsx.h"
+#include "PasswordHsx.h"
 #include "ScopeHsx.h"
 #include <iostream>
 namespace im {
@@ -21,7 +22,8 @@ void AdminScreenHsx::show() {
         {"重置用户密码", [&] {
             const int id=ui_.id("用户ID："); ui_.data().user(id);
             const auto type=ui_.confirm("重置全部已开通服务密码")?ServiceHsx::Count:ui_.chooseService(id);
-            const auto fresh=ui_.password("新密码："); require(fresh==ui_.password("确认新密码："),"两次新密码不一致");
+            const auto fresh=ui_.password("新密码（至少 8 字节）："); require(fresh==ui_.password("确认新密码："),"两次新密码不一致");
+            PasswordHsx::check(fresh, PasswordHsx::minimumLength, "新密码");
             admin.resetPassword(id,type,fresh); std::cout<<"密码已重置，该用户需重新登录。\n"; }},
         {"查看登录与操作记录", [this] {
             for(auto it=ui_.data().adminLogs().rbegin();it!=ui_.data().adminLogs().rend();++it) {
@@ -29,7 +31,7 @@ void AdminScreenHsx::show() {
                 if(log.target())std::cout<<" / 用户 "<<log.target(); if(log.service()!=ServiceHsx::Count)std::cout<<" / "<<serviceName(log.service()); std::cout<<'\n';
             } }},
         {"修改管理员密码", [&] {
-            const auto original=ui_.password("原管理员密码："), fresh=ui_.password("新密码（至少8个字符）：");
+            const auto original=ui_.password("原管理员密码："), fresh=ui_.password("新密码（至少 8 字节）：");
             require(fresh==ui_.password("确认新密码："),"两次新密码不一致"); admin.changePassword(original,fresh); std::cout<<"管理员密码已更新。\n"; }}
     }, [&] { admin.requireAdmin(); return true; });
 }

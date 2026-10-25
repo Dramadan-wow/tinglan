@@ -60,8 +60,12 @@ bool PasswordHsx::valid(const std::string& encoded) {
     return true;
 }
 bool PasswordHsx::outdated(const std::string& encoded) { return valid(encoded) && iterations(encoded) < CurrentIterations; }
-std::string PasswordHsx::hash(const std::string& password, size_t minimum) {
-    checkText(password, "密码", false, 128); require(password.size() >= minimum, "密码至少" + std::to_string(minimum) + "个字节");
+void PasswordHsx::check(const std::string& password, size_t minimum, const std::string& field) {
+    checkText(password, field, false, 128);
+    require(password.size() >= minimum, field + "至少" + std::to_string(minimum) + "个字节");
+}
+std::string PasswordHsx::hash(const std::string& password, size_t minimum, const std::string& field) {
+    check(password, minimum, field);
     std::array<unsigned char, 16> salt{};
 #ifdef _WIN32
     require(BCryptGenRandom(nullptr, salt.data(), static_cast<ULONG>(salt.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0,

@@ -2,6 +2,7 @@
 #include "FriendManagerHsx.h"
 #include "GroupManagerHsx.h"
 #include "MessageManagerHsx.h"
+#include "PasswordHsx.h"
 #include "StorageHsx.h"
 #include "DemoDataHsx.h"
 #include <chrono>
@@ -19,6 +20,10 @@ template<class F> void rejects(F action, const std::string& description) {
     bool rejected = false;
     try { action(); } catch (const std::exception&) { rejected = true; }
     expect(rejected, description);
+}
+template<class F> std::string messageOf(F action) {
+    try { action(); } catch (const std::exception& e) { return e.what(); }
+    return {};
 }
 std::string contents(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary); std::ostringstream out; out << in.rdbuf(); return out.str();
@@ -55,6 +60,12 @@ int main() {
         a.open(1, wc, 40001, "微信一", "123456"); a.open(2, wc, 40002, "微信二", "123456"); a.open(3, wc, 40003, "微信三", "123456");
         a.open(1, wb, 10001, "微博一", "123456");
         expect(data.account(1, wb).shared(), "weibo shares QQ");
+        expect(messageOf([&] { a.open(5, wc, 40005, "微信五", std::string{}); }) == "密码不能为空", "service password is not an admin password");
+        expect(messageOf([] { PasswordHsx::hash(std::string{}, 8, "管理员密码"); }) == "管理员密码不能为空", "admin label");
+        expect(messageOf([] { PasswordHsx::hash("abc"); }) == "密码至少8个字节", "minimum follows the argument");
+        expect(messageOf([] { PasswordHsx::check("123456"); }) == "密码至少8个字节", "form rule uses the shared minimum");
+        a.open(5, wc, 40005, "微信五", "123456");
+        expect(data.account(5, wc).verify("123456"), "an archived short password still signs in");
         rejects([&] { a.open(2, wb, 33333, "错误", "123456"); }, "wrong shared number");
         a.bind(1, 10001); expect(data.account(1, wc).boundQQ() == 10001, "QQ binding");
         rejects([&] { a.bind(1, 10002); }, "foreign QQ binding");
