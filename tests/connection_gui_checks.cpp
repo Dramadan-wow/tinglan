@@ -7,12 +7,14 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSpinBox>
 #include <QTextStream>
+#include <QWheelEvent>
 #include <stdexcept>
 namespace {
 int checks=0;
@@ -31,6 +33,11 @@ int main(int argc,char** argv){
         host->clear();save->click();check(!QFile::exists(root+"/connection-active.json"),"Empty host cannot be saved");
         host->setText("0.0.0.0");save->click();check(!QFile::exists(root+"/connection-active.json"),"Wildcard is not a connection target");
         host->setText("chat.example.test");port->setValue(56110);d.findChild<QLabel*>("connectionError")->clear();app.processEvents();
+        host->setFocus();app.processEvents();const QPointF middle(port->width()/2.0,port->height()/2.0);
+        QWheelEvent wheel(middle,port->mapToGlobal(middle),QPoint(),QPoint(0,120),Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);QApplication::sendEvent(port,&wheel);app.processEvents();
+        check(port->value()==56110,"Mouse wheel over the port field does not change the chat port");
+        port->setFocus();QKeyEvent up(QEvent::KeyPress,Qt::Key_Up,Qt::NoModifier);QApplication::sendEvent(port,&up);app.processEvents();
+        check(port->value()==56111,"Arrow keys still adjust the focused port field");port->setValue(56110);host->setFocus();app.processEvents();
         check(d.grab().save(root+"/connection-settings.png"),"Rendered real Qt connection settings screenshot");
         d.findChild<QLineEdit*>("serverCa")->setText(root+"/missing.pem");save->click();check(!QFile::exists(root+"/connection-active.json"),"Missing CA cannot be saved");
         d.findChild<QLineEdit*>("serverCa")->clear();save->click();
