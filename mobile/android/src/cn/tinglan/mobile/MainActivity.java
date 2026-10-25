@@ -130,7 +130,7 @@ public final class MainActivity extends Activity {
         LinearLayout art=column();art.addView(artwork(service==2,wide?430:202));if(wide){gap(art,18);art.addView(text(service==2?"今天的灵感，值得被看见。":"与你同频，也与你同在。",19,INK,true));}
         LinearLayout.LayoutParams artSize=new LinearLayout.LayoutParams(wide?0:-1,-2,wide?1:0);if(wide)artSize.rightMargin=dp(28);host.addView(art,artSize);
         LinearLayout form=column();if(!wide)gap(form,18);LinearLayout card=card(form);card.addView(text(register?"开启新的相遇":"欢迎回来",23,INK,true));gap(card,5);card.addView(text(service==2?"伊冯灵感 · 记录属于你的频率":"选择服务，继续你的云端会话。",12,MUTED,false));gap(card,20);serviceStrip(card,true);gap(card,21);
-        nickname=input("注册时的昵称",false);nickname.setText(prefs.getString("nickname",""));password=input(register?"设置至少 8 字节的密码":"输入账号密码",true);field(card,"昵称",nickname);field(card,"密码",password);
+        nickname=input("注册时的昵称",false);nickname.setText(prefs.getString("nickname",""));password=input(register?"设置至少 12 字节的密码":"输入账号密码",true);field(card,"昵称",nickname);field(card,"密码",password);
         loginButton=button(register?"创建账号并登录":"进入听澜  →",true,this::login);card.addView(loginButton,new LinearLayout.LayoutParams(-1,dp(50)));gap(card,10);
         TextView mode=text(register?"已有账号？  返回登录":"还没有账号？  创建账号",13,GREEN,true);mode.setGravity(Gravity.CENTER);mode.setPadding(0,dp(10),0,dp(6));mode.setOnClickListener(v->{if(!connecting){prefs.edit().putString("nickname",nickname.getText().toString().trim()).apply();register=!register;showLogin();}});card.addView(mode);
         status=text(connecting?connectionState:profile==null?"尚未设置服务器 · 点击右上角连接":"已保存服务器 · "+profile.host,11,MUTED,false);status.setGravity(Gravity.CENTER);form.addView(status);gap(form,10);TextView privacy=text("密码只用于本次云端认证，不保存到平板。",11,MUTED,false);privacy.setGravity(Gravity.CENTER);form.addView(privacy);host.addView(form,new LinearLayout.LayoutParams(wide?0:-1,-2,wide?1:0));
@@ -147,7 +147,7 @@ public final class MainActivity extends Activity {
     }
     private void login(){
         if(profile==null){connectionDialog();return;}String nick=nickname.getText().toString().trim(),secret=password.getText().toString();int bytes=secret.getBytes(StandardCharsets.UTF_8).length;
-        if(nick.isEmpty()||nick.getBytes(StandardCharsets.UTF_8).length>60||bytes<1||bytes>128||(register&&bytes<8)){toast(register?"昵称不能为空，密码需为 8–128 字节":"请输入昵称和密码（密码最多 128 字节）");return;}
+        if(nick.isEmpty()||nick.getBytes(StandardCharsets.UTF_8).length>60||bytes<1||bytes>128||(register&&bytes<12)){toast(register?"昵称不能为空，密码需为 12–128 字节":"请输入昵称和密码（密码最多 128 字节）");return;}
         prefs.edit().putString("nickname",nick).putInt("service",service).apply();connecting=true;password.setText("");nickname.setEnabled(false);password.setEnabled(false);loginButton.setEnabled(false);
         final ChatClient[] holder=new ChatClient[1];
         ChatClient next=new ChatClient(profile,nick,secret,service,register,new ChatClient.Listener(){
@@ -258,7 +258,7 @@ public final class MainActivity extends Activity {
         scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));String token=chatTarget+":"+list.size();if(unread&&!lastReadBatch.equals(token)){lastReadBatch=token;command(Wire.obj("op","weibo.dm.read","target",chatTarget));}
     }
     private void openWeiboService(){
-        LinearLayout form=column();form.setPadding(dp(22),dp(8),dp(22),0);form.addView(text("为当前账号设置微博服务密码，开通后可在同一云端切换。",13,MUTED,false));gap(form,12);EditText secret=input("至少 8 字节的微博密码",true);form.addView(secret);AlertDialog d=new AlertDialog.Builder(this).setTitle("开通微博服务").setView(form).setNegativeButton("取消",null).setPositiveButton("开通",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String password=secret.getText().toString();if(password.getBytes(StandardCharsets.UTF_8).length<8||password.getBytes(StandardCharsets.UTF_8).length>128){toast("密码需为 8–128 字节");return;}command(Wire.obj("op","account.open","contact",2,"number",String.valueOf(workspace.viewer),"password",password,"shared",false),()->{service=2;tab=2;channel="weibo";weiboInbox=false;showHome();},null);secret.setText("");d.dismiss();}));d.show();
+        LinearLayout form=column();form.setPadding(dp(22),dp(8),dp(22),0);form.addView(text("为当前账号设置微博服务密码，开通后可在同一云端切换。",13,MUTED,false));gap(form,12);EditText secret=input("至少 12 字节的微博密码",true);form.addView(secret);AlertDialog d=new AlertDialog.Builder(this).setTitle("开通微博服务").setView(form).setNegativeButton("取消",null).setPositiveButton("开通",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String password=secret.getText().toString();if(password.getBytes(StandardCharsets.UTF_8).length<12||password.getBytes(StandardCharsets.UTF_8).length>128){toast("密码需为 12–128 字节");return;}command(Wire.obj("op","account.open","contact",2,"number",String.valueOf(workspace.viewer),"password",password,"shared",false),()->{service=2;tab=2;channel="weibo";weiboInbox=false;showHome();},null);secret.setText("");d.dismiss();}));d.show();
     }
 
     private void mine(){

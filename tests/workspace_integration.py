@@ -147,7 +147,7 @@ def main():
     replay['data']['text']='冲突内容';raw.send(replay)
     check(not receive(raw,'workspace_result')['data']['ok'],'Reused request ID with changed content rejected')
     raw.close()
-    b2.rpc('account.open',dict(contact=2,number='10002',password='123456',shared=True))
+    b2.rpc('account.open',dict(contact=2,number='10002',password='test-weibo-password-2026',shared=True))
     a2.rpc('account.edit',dict(service=1,nick='听澜测试新昵称',old='123456',password='test-wechat-password-2026'))
     a2.command('service',value=1);a2.event('service',lambda e:e['ok'])
     # Reconnect active GUI processes after server restart; all data must survive.

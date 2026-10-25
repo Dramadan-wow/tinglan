@@ -33,7 +33,7 @@ int integer(const QJsonObject& o,const QString& key,int fallback,int minimum,int
 bool boolean(const QJsonObject& o,const QString& key,bool fallback){if(!o.contains(key))return fallback;require(o.value(key).isBool(),"Invalid boolean configuration");return o.value(key).toBool();}
 }
 int main(int argc,char** argv){
-    QCoreApplication app(argc,argv);app.setApplicationName("tinglan-server");app.setApplicationVersion("1.0");
+    QCoreApplication app(argc,argv);app.setApplicationName("tinglan-server");app.setApplicationVersion(IM_APP_VERSION);
     QCommandLineParser parser;parser.addHelpOption();parser.addVersionOption();
     parser.addOption({"import-audit","Import existing matching local audit records without credentials (server must be stopped)","path"});
     parser.addOption({"set-admin","Set server admin using TINGLAN_ADMIN_PASSWORD environment variable (server must be stopped)","name"});

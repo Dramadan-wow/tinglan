@@ -69,7 +69,7 @@ def main():
     b.command('shot',page=7,name='membership.png');b.event('screenshot')
     b.rpc('account.close',dict(service=2));b.snapshot(lambda s:not s['weibo'] and not s['directMessages']);c.rpc('weibo.dm.send',dict(target=10002,post=post['id'],text='服务已关闭'),False)
     check(True,'Closing Weibo revokes social access without deleting posts or private records')
-    b.rpc('account.open',dict(contact=2,number='10002',password='123456',shared=True));b.snapshot(lambda s:any('城市散步' in p['text'] for p in s['weibo']) and len(s['directMessages'])==2)
+    b.rpc('account.open',dict(contact=2,number='10002',password='test-weibo-password-2026',shared=True));b.snapshot(lambda s:any('城市散步' in p['text'] for p in s['weibo']) and len(s['directMessages'])==2)
     check(True,'Reopening Weibo restores previous posts and private history')
     b.command('quit');c.command('quit');b.process.wait(timeout=20);c.process.wait(timeout=20);server.kill()
     duplicate=subprocess.run([n.SERVER,'--config',config,'--review-order',order['id'],'--approve','--note','test-verified-transaction-unique-2026'],env=n.ENV,capture_output=True,timeout=30)

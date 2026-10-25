@@ -6,6 +6,7 @@
 #include "IconHsx.h"
 #include "ThemeHsx.h"
 #include "UpdateManagerHsx.h"
+#include "PasswordHsx.h"
 #include <QApplication>
 #include <QAction>
 #include <QButtonGroup>
@@ -109,8 +110,8 @@ void LoginDialogHsx::login() {
 }
 void LoginDialogHsx::registerUser() {
     if(session_.remote()){
-        FormDialogHsx form("创建听澜账号",this);form.text("name","登录昵称");form.text("password","密码（至少 8 字节）",{},true);form.text("repeat","确认密码",{},true);
-        form.submit([&](const FormDialogHsx& f){if(f.textValue("name").trimmed().isEmpty()||f.textValue("password").toUtf8().size()<8||f.textValue("password")!=f.textValue("repeat")){error_->setText("昵称不能为空；密码至少 8 字节且两次相同");return false;}return true;});
+        FormDialogHsx form("创建听澜账号",this);form.text("name","登录昵称");form.text("password","密码（至少 12 字节）",{},true);form.text("repeat","确认密码",{},true);
+        form.submit([&](const FormDialogHsx& f){if(f.textValue("name").trimmed().isEmpty()||f.textValue("password").toUtf8().size()<qsizetype(PasswordHsx::RemoteMinimum)||f.textValue("password")!=f.textValue("repeat")){error_->setText("昵称不能为空；密码至少 12 字节且两次相同");return false;}return true;});
         if(form.exec()==QDialog::Accepted){user_->setText(form.textValue("name"));findChild<QPushButton*>("loginSubmit")->setEnabled(false);register_->setEnabled(false);session_.loginRemote(form.textValue("name"),ServiceHsx::QQ,form.textValue("password"),true);}return;
     }
     FormDialogHsx form("初次相逢 · 注册账号",this);form.text("name","登录昵称");form.text("birth","出生日期","2000-01-01");form.text("location","所在地","长春");

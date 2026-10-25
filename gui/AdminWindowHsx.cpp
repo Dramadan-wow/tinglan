@@ -3,6 +3,7 @@
 #include "ThemeHsx.h"
 #include "UiHsx.h"
 #include "MembershipAdminHsx.h"
+#include "PasswordHsx.h"
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -100,11 +101,12 @@ void AdminWindowHsx::resetPassword() {
     FormDialogHsx form(QString("重置用户 %1 的密码").arg(id),this);
     QList<QPair<QString,QVariant>> services{{"全部已开通服务",static_cast<int>(ServiceHsx::Count)}}; services.append(UiHsx::services(session_.data().user(id)));
     form.combo("service","重置范围",services); form.text("new","新密码",{},true); form.text("repeat","确认新密码",{},true);
-    form.submit([&](const FormDialogHsx& f){require(f.textValue("new")==f.textValue("repeat"),"两次新密码不一致");if(session_.remote())require(f.textValue("new").toUtf8().size()>=8,"新密码至少 8 字节");return session_.command("admin.reset",{{"target",id},{"scope",f.choice("service")},{"password",f.textValue("new")}},[&]{session_.admins().resetPassword(id,static_cast<ServiceHsx>(f.choice("service")),S::s(f.textValue("new")));},"密码已重置，该用户需重新登录");}); form.exec();
+    form.submit([&](const FormDialogHsx& f){require(f.textValue("new")==f.textValue("repeat"),"两次新密码不一致");if(session_.remote())require(f.textValue("new").toUtf8().size()>=qsizetype(PasswordHsx::RemoteMinimum),"新密码至少 12 字节");return session_.command("admin.reset",{{"target",id},{"scope",f.choice("service")},{"password",f.textValue("new")}},[&]{session_.admins().resetPassword(id,static_cast<ServiceHsx>(f.choice("service")),S::s(f.textValue("new")));},"密码已重置，该用户需重新登录");}); form.exec();
 }
 void AdminWindowHsx::changePassword() {
-    FormDialogHsx form("修改管理员密码",this); form.text("old","原密码",{},true); form.text("new","新密码（至少8个字符）",{},true); form.text("repeat","确认新密码",{},true);
-    form.submit([&](const FormDialogHsx& f){require(f.textValue("new").size()>=8,"管理员密码至少8个字符");require(f.textValue("new")==f.textValue("repeat"),"两次新密码不一致");return session_.command("admin.password",{{"old",f.textValue("old")},{"password",f.textValue("new")}},[&]{session_.admins().changePassword(S::s(f.textValue("old")),S::s(f.textValue("new")));},"管理员密码已更新");}); form.exec();
+    FormDialogHsx form("修改管理员密码",this); form.text("old","原密码",{},true); const qsizetype minimum=session_.remote()?qsizetype(PasswordHsx::RemoteMinimum):8;
+    form.text("new",QString("新密码（至少%1个字节）").arg(minimum),{},true); form.text("repeat","确认新密码",{},true);
+    form.submit([&](const FormDialogHsx& f){require(f.textValue("new").toUtf8().size()>=minimum,QString("管理员密码至少%1个字节").arg(minimum).toStdString());require(f.textValue("new")==f.textValue("repeat"),"两次新密码不一致");return session_.command("admin.password",{{"old",f.textValue("old")},{"password",f.textValue("new")}},[&]{session_.admins().changePassword(S::s(f.textValue("old")),S::s(f.textValue("new")));},"管理员密码已更新");}); form.exec();
 }
 void AdminWindowHsx::closeEvent(QCloseEvent* event) {
     if(!session_.save()&&!UiHsx::confirm(this,"保存失败，仍要关闭并放弃尚未保存的修改？")){event->ignore();return;} event->accept();

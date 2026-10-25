@@ -57,6 +57,12 @@ int main(){
         const auto hash1=PasswordHsx::hash("same-password"),hash2=PasswordHsx::hash("same-password");
         expect(hash1!=hash2&&PasswordHsx::verify("same-password",hash1)&&PasswordHsx::verify("same-password",hash2),"random salt and correct hash verification");
         expect(!PasswordHsx::verify("wrong",hash1)&&!PasswordHsx::verify("same-password","broken"),"hash rejects wrong password and malformed digest");
+        // Independent PBKDF2-HMAC-SHA256 vector (100000 rounds, salt 00..0f) written by the 5.6 format.
+        const std::string legacy="pbkdf2-sha256:100000:000102030405060708090a0b0c0d0e0f:9d753e9b3b0729bad2bd2b85f88a394b4d3205d074d9486a089568b794eb2f43";
+        expect(PasswordHsx::valid(legacy)&&PasswordHsx::verify("legacy-password-2026",legacy)&&!PasswordHsx::verify("legacy-password-2025",legacy),"legacy 100000-round digest still verifies");
+        expect(PasswordHsx::outdated(legacy)&&!PasswordHsx::outdated(hash1)&&hash1.rfind("pbkdf2-sha256:600000:",0)==0,"new digests use 600000 rounds and legacy ones are marked for rehash");
+        expect(!PasswordHsx::valid("pbkdf2-sha256:200000:"+legacy.substr(21))&&!PasswordHsx::outdated("broken"),"unsupported round counts are not accepted");
+        rejects([]{PasswordHsx::hash("short-pass",PasswordHsx::RemoteMinimum);},"server account passwords need 12 bytes");
         admin.setLoginAllowed(10004,false);const auto file=output/"state.txt";StorageHsx::save(data,file);const auto saved=contents(file);
         expect(saved.rfind("TENCENT 4\n",0)==0,"administrator state saved in version4");
         expect(saved.find("admin-new-2026")==std::string::npos&&saved.find("admin123456")==std::string::npos,"administrator password is never stored as plain text");

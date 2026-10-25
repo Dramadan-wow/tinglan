@@ -153,7 +153,7 @@ void ChatServerHsx::chat(const std::shared_ptr<Peer>& peer,const QJsonObject& m)
 
 void ChatServerHsx::workspaceLogin(const std::shared_ptr<Peer>& peer,const QJsonObject& message){
     const auto data=message["data"].toObject();const auto nickname=data["username"].toString().trimmed(),password=data["password"].toString(),request=message["id"].toString();const bool registration=data["register"].toBool(),administrator=data["admin"].toBool();const int service=data["service"].toInt(-1);
-    if(!workspace_||!peer->user.isEmpty()||peer->authenticating||nickname.isEmpty()||nickname.toUtf8().size()>60||password.isEmpty()||password.toUtf8().size()>128||service<0||service>=im::ActiveServiceCountHsx||!message["senderId"].toString().isEmpty()||!message["recipientId"].toString().isEmpty()||(registration&&(administrator||password.toUtf8().size()<8))){error(peer,"invalid_login",request,true);return;}
+    if(!workspace_||!peer->user.isEmpty()||peer->authenticating||nickname.isEmpty()||nickname.toUtf8().size()>60||password.isEmpty()||password.toUtf8().size()>128||service<0||service>=im::ActiveServiceCountHsx||!message["senderId"].toString().isEmpty()||!message["recipientId"].toString().isEmpty()||(registration&&(administrator||password.toUtf8().size()<qsizetype(im::PasswordHsx::RemoteMinimum)))){error(peer,"invalid_login",request,true);return;}
     const auto ip=peer->socket->peerAddress().toString();const auto now=clock_.elapsed();
     if(!attempts_.contains(ip)&&attempts_.size()>=1024){error(peer,"server_busy",request,true);return;}
     auto& attempt=attempts_[ip];if(now-attempt.first>60000)attempt={now,0};
@@ -165,14 +165,18 @@ void ChatServerHsx::workspaceLogin(const std::shared_ptr<Peer>& peer,const QJson
     peer->authenticating=true;++authJobs_;
     const bool wantsFiles=data["fileTransfer"].toInt()==1;
     workers_.start([this,peer,nickname,password,request,registration,service,user,record,administrator,adminRecord,wantsFiles]{
-        bool valid=false;std::string hash;
-        try{if(registration){hash=im::PasswordHsx::hash(password.toStdString());valid=true;}else valid=im::PasswordHsx::verify(password.toStdString(),record)&&(administrator?!adminRecord.empty():user!=0);}catch(...){}
-        QMetaObject::invokeMethod(this,[this,peer,nickname,request,registration,service,user,record,valid,hash,administrator,wantsFiles]{
+        bool valid=false;std::string hash,upgraded;
+        try{if(registration){hash=im::PasswordHsx::hash(password.toStdString());valid=true;}else valid=im::PasswordHsx::verify(password.toStdString(),record)&&(administrator?!adminRecord.empty():user!=0);
+            // Rehash older 100000-round digests here, off the event loop, while the plain password is still known.
+            if(valid&&!registration&&im::PasswordHsx::outdated(record))upgraded=im::PasswordHsx::hash(password.toStdString(),1);}catch(...){}
+        QMetaObject::invokeMethod(this,[this,peer,nickname,request,registration,service,user,record,valid,hash,upgraded,administrator,wantsFiles]{
             --authJobs_;if(!peer->socket||!peers_.contains(peer->socket.data())||peer->closing)return;peer->authenticating=false;
             int authenticated=user;QString reason="账号或密码不正确";
+            auto upgrade=[&](int owner){if(upgraded.empty())return;try{workspace_->upgradeCredential(owner,im::ServiceHsx(service),record,upgraded);emit logLine("credential_upgraded");}catch(const std::exception&){emit logLine("credential_upgrade_failed");}};
             try{if(!valid)throw std::runtime_error("账号或密码不正确");
                 if(administrator){
                     if(workspace_->adminCredential(nickname)!=record)throw std::runtime_error("管理员凭据已改变，请重新登录");
+                    upgrade(0);
                     workspace_->loginAudit(nickname,0,im::ServiceHsx::Count,"管理员登录成功",true);
                     peer->administrator=true;peer->user="workspace_admin";peer->lastActive=clock_.elapsed();
                     send(peer,envelope("login_result",{{"requestId",request},{"ok",true},{"userId",peer->user},{"workspace",true},{"admin",true}}, {},peer->user));
@@ -181,6 +185,7 @@ void ChatServerHsx::workspaceLogin(const std::shared_ptr<Peer>& peer,const QJson
                 if(registration)authenticated=workspace_->registerUser(nickname,hash,im::serviceType(service));
                 else if(workspace_->resolve(nickname,im::serviceType(service))!=user||workspace_->credential(user,im::serviceType(service))!=record)throw std::runtime_error("账号信息已变更，请重新登录");
                 const auto stable="u"+QString::number(authenticated);if(online_.contains(stable))throw std::runtime_error("账号已在另一台设备登录");
+                if(!registration)upgrade(authenticated);
                 peer->workspaceUser=authenticated;peer->service=service;peer->user=stable;peer->lastActive=clock_.elapsed();online_[stable]=peer->socket.data();workspace_->online(authenticated,true,im::serviceType(service));
                 QJsonObject fileSession;
                 if(files_&&options_.tls&&wantsFiles){QByteArray secret(32,Qt::Uninitialized);for(auto& b:secret)b=char(QRandomGenerator::system()->generate());peer->fileToken=QString::fromLatin1(secret.toHex());refreshFileGrants();fileSession={{"port",filePort_},{"token",peer->fileToken},{"user",authenticated}};}

@@ -51,9 +51,14 @@ void WorkspaceBackendHsx::online(int user,bool enabled,ServiceHsx service){
     loginAudit(QString::fromStdString(data_.user(user).name()),user,service,enabled?"用户登录成功":"用户登出 / 连接断开");
 }
 std::string WorkspaceBackendHsx::adminCredential(const QString& name)const{return name.toStdString()==data_.adminName_?data_.adminHash_:std::string{};}
+void WorkspaceBackendHsx::upgradeCredential(int user,ServiceHsx service,const std::string& previous,const std::string& upgraded){
+    require(PasswordHsx::valid(upgraded),"密码摘要无效");auto& current=user?data_.editAccount(user,service).password_:data_.adminHash_;
+    if(current!=previous)return;const auto before=WorkspaceCodecHsx::encode(data_);
+    try{current=upgraded;persist();}catch(...){data_=WorkspaceCodecHsx::decode(before);throw;}
+}
 void WorkspaceBackendHsx::setAdmin(const QString& name,const QString& password){
     require(!name.trimmed().isEmpty()&&name.toUtf8().size()<=60,"管理员名称无效");
-    const auto hash=PasswordHsx::hash(password.toStdString());const auto before=WorkspaceCodecHsx::encode(data_);
+    const auto hash=PasswordHsx::hash(password.toStdString(),PasswordHsx::RemoteMinimum);const auto before=WorkspaceCodecHsx::encode(data_);
     try{data_.adminName_=name.trimmed().toStdString();data_.adminHash_=hash;data_.audit(data_.adminName_,"服务器维护者设置管理员凭据");persist();}
     catch(...){data_=WorkspaceCodecHsx::decode(before);throw;}
 }
@@ -125,8 +130,8 @@ QJsonObject WorkspaceBackendHsx::command(int actor,ServiceHsx service,const QStr
             if(op=="sync"){}
             else if(op=="admin.allow"){admin.setLoginAllowed(target,enabled);if(!enabled)result["revokeUser"]=target;}
             else if(op=="admin.logout"){admin.forceLogout(target);result["revokeUser"]=target;}
-            else if(op=="admin.reset"){require(data["password"].toString().toUtf8().size()>=8,"新密码至少 8 字节");const int scope=data.value("scope").toInt(-1);require((scope>=0&&scope<ActiveServiceCountHsx)||scope==int(ServiceHsx::Count),"重置范围无效");admin.resetPassword(target,ServiceHsx(scope),s(data["password"]));result["revokeUser"]=target;}
-            else if(op=="admin.password"){admin.changePassword(s(data["old"]),s(data["password"]));result["revokeAdmins"]=true;}
+            else if(op=="admin.reset"){require(data["password"].toString().toUtf8().size()>=qsizetype(PasswordHsx::RemoteMinimum),"新密码至少 12 字节");const int scope=data.value("scope").toInt(-1);require((scope>=0&&scope<ActiveServiceCountHsx)||scope==int(ServiceHsx::Count),"重置范围无效");admin.resetPassword(target,ServiceHsx(scope),s(data["password"]));result["revokeUser"]=target;}
+            else if(op=="admin.password"){require(data["password"].toString().toUtf8().size()>=qsizetype(PasswordHsx::RemoteMinimum),"管理员新密码至少 12 字节");admin.changePassword(s(data["old"]),s(data["password"]));result["revokeAdmins"]=true;}
             else if(op=="admin.membership.review"){
                 require(!data["approve"].toBool()||data["verified"].toBool(),"请先核验实际到账");
                 SocialStoreHsx(db_,data_).review(data["id"].toString(),data["approve"].toBool(),data["note"].toString(),false);
@@ -142,8 +147,8 @@ QJsonObject WorkspaceBackendHsx::command(int actor,ServiceHsx service,const QStr
         else if(op=="chat.star")m.star(actor,service,id,enabled);
         else if(op=="chat.recall")m.recall(actor,id);
         else if(op=="profile")a.profile(actor,s(data["name"]),s(data["location"]));
-        else if(op=="account.edit"){require(data["password"].toString().isEmpty()||data["password"].toString().toUtf8().size()>=8,"新密码至少 8 字节");a.edit(actor,service,s(data["nick"]),s(data["old"]),s(data["password"]));}
-        else if(op=="account.open")a.open(actor,other,data["number"].toString().toLongLong(),data_.user(actor).name(),s(data["password"]),data["shared"].toBool());
+        else if(op=="account.edit"){require(data["password"].toString().isEmpty()||data["password"].toString().toUtf8().size()>=qsizetype(PasswordHsx::RemoteMinimum),"新密码至少 12 字节");a.edit(actor,service,s(data["nick"]),s(data["old"]),s(data["password"]));}
+        else if(op=="account.open"){require(data["password"].toString().toUtf8().size()>=qsizetype(PasswordHsx::RemoteMinimum),"服务密码至少 12 字节");a.open(actor,other,data["number"].toString().toLongLong(),data_.user(actor).name(),s(data["password"]),data["shared"].toBool());}
         else if(op=="account.close")a.close(actor,service);
         else if(op=="account.bind")a.bind(actor,data["number"].toString().toLongLong());
         else if(op=="friend.request")f.request(actor,service,target,other,s(data["reason"]));

@@ -1,23 +1,29 @@
 #include "WorkspaceCodecHsx.h"
 #include "PasswordHsx.h"
 #include <QJsonArray>
+#include <set>
 namespace im {
 namespace {
 QString q(const std::string& s){return QString::fromStdString(s);}
 std::string s(const QJsonValue& v){return v.toString().toStdString();}
 template<class Set> QJsonArray array(const Set& values){QJsonArray out;for(auto v:values)out.append(int(v));return out;}
+// Placeholders keep hidden fields decodable by already-installed clients (DateHsx and UserHsx reject empty values).
+const QString HiddenDate="1900-01-01",HiddenLocation="未公开";
 }
 QJsonObject WorkspaceCodecHsx::encode(const DataStoreHsx& d,int viewer){
     QJsonArray users,groups,messages,requests;
-    for(const auto& [id,ptr]:d.users_){const auto& u=*ptr;QJsonArray services;
+    // Friendship is two-way, but collect both directions so a half-written relation never widens visibility.
+    std::set<int> contacts;
+    if(viewer>0)for(const auto& [id,ptr]:d.users_)for(const auto& [type,a]:ptr->services_)for(const auto& [fid,f]:a.friends_){if(id==viewer)contacts.insert(fid);else if(fid==viewer)contacts.insert(id);}
+    for(const auto& [id,ptr]:d.users_){const auto& u=*ptr;QJsonArray services;const bool self=viewer<=0||viewer==id,known=self||contacts.count(id)!=0;
         for(const auto& [type,a]:u.services_){QJsonArray friends;for(const auto& [fid,f]:a.friends_)if(!viewer||viewer==id)friends.append(QJsonObject{{"id",fid},{"contact",int(f.contact())},{"remark",q(f.remark())},{"category",q(f.category())}});
-            services.append(QJsonObject{{"type",int(type)},{"number",QString::number(a.number_)},{"nick",q(a.nick_)},{"password",viewer?QString{}:q(a.password_)},{"shared",a.shared_},{"bound",QString::number(a.boundQQ_)},{"friends",friends},{"blocked",(!viewer||viewer==id)?array(a.blocked_):QJsonArray{}}});}
-        users.append(QJsonObject{{"id",id},{"type",q(u.typeName())},{"name",q(u.name_)},{"birth",q(u.birth_.str())},{"applied",q(u.applied_.str())},{"location",q(u.location_)},{"shared",u.sharesQQ()},{"online",u.online_},{"disabled",u.disabled_},{"services",services}});
+            services.append(QJsonObject{{"type",int(type)},{"number",QString::number(a.number_)},{"nick",q(a.nick_)},{"password",viewer?QString{}:q(a.password_)},{"shared",a.shared_},{"bound",self?QString::number(a.boundQQ_):QString("0")},{"friends",friends},{"blocked",(!viewer||viewer==id)?array(a.blocked_):QJsonArray{}}});}
+        users.append(QJsonObject{{"id",id},{"type",q(u.typeName())},{"name",q(u.name_)},{"birth",self?q(u.birth_.str()):HiddenDate},{"applied",self?q(u.applied_.str()):HiddenDate},{"location",known?q(u.location_):HiddenLocation},{"shared",u.sharesQQ()},{"online",known&&u.online_},{"disabled",self&&u.disabled_},{"services",services}});
     }
     for(const auto& [id,ptr]:d.groups_){const auto& g=*ptr;QJsonArray members,pending,mutes;
         for(const auto& [uid,types]:g.members_)members.append(QJsonObject{{"id",uid},{"services",array(types)}});
         for(const auto& [uid,type]:g.pending_)if(!viewer||uid==viewer||g.manages(viewer))pending.append(QJsonArray{uid,int(type)});
-        for(const auto& [uid,time]:g.mutedUntil_)mutes.append(QJsonArray{uid,QString::number(time)});
+        if(viewer<=0||g.contains(viewer))for(const auto& [uid,time]:g.mutedUntil_)mutes.append(QJsonArray{uid,QString::number(time)});
         groups.append(QJsonObject{{"id",id},{"owner",g.owner_},{"parent",g.parent_},{"capacity",g.capacity_},{"native",int(g.native_)},{"mode",int(g.policy().mode())},{"name",q(g.name_)},{"notice",q(g.announcement_)},{"members",members},{"admins",array(g.admins_)},{"pending",pending},{"mutes",mutes}});
     }
     for(const auto& [id,m]:d.messages_){

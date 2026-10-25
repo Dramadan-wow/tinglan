@@ -47,3 +47,5 @@ jobs:
         run: cmake --build build-ci-server --parallel 4
       - name: Server starts
         run: ./build-ci-server/im_server --help
+      - name: Server reports repository version
+        run: test "$(./build-ci-server/im_server --version)" = "tinglan-server $(tr -d '\r\n' < VERSION)"

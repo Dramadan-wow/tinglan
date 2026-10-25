@@ -10,6 +10,8 @@ public:
     std::string credential(int user,ServiceHsx service) const;
     void online(int user,bool enabled,ServiceHsx service=ServiceHsx::Count);
     std::string adminCredential(const QString& name) const;
+    // Replace a digest verified at login with a stronger one; skipped if it changed in the meantime.
+    void upgradeCredential(int user,ServiceHsx service,const std::string& previous,const std::string& upgraded);
     void setAdmin(const QString& name,const QString& password);
     int importAudit(const QString& file);
     void loginAudit(const QString& nickname,int user,ServiceHsx service,const QString& action,bool admin=false);
