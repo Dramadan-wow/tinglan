@@ -22,6 +22,7 @@ public final class UiChecks extends Instrumentation {
     @Override public void onCreate(Bundle args){super.onCreate(args);start();}
     private void set(String name,Object value)throws Exception{Field field=activity.getClass().getDeclaredField(name);field.setAccessible(true);field.set(activity,value);}
     private void call(String name)throws Exception{Method method=activity.getClass().getDeclaredMethod(name);method.setAccessible(true);method.invoke(activity);}
+    private void open(int kind,int target)throws Exception{Method method=activity.getClass().getDeclaredMethod("openChat",int.class,int.class);method.setAccessible(true);method.invoke(activity,kind,target);}
     private void main(Runnable action){runOnMainSync(action);waitForIdleSync();}
     private boolean find(View view,String target){
         if(view instanceof TextView&&((TextView)view).getText().toString().contains(target))return true;
@@ -38,7 +39,16 @@ public final class UiChecks extends Instrumentation {
     private JSONObject fixture()throws Exception{
         JSONObject root=new JSONObject();root.put("version",1).put("viewer",1).put("admin",false);
         JSONArray users=new JSONArray();for(int id=1;id<=3;id++){JSONObject u=new JSONObject();u.put("id",id).put("name",id==1?"林间晚风":id==2?"晴空来信":"山野手记").put("location","在生活里寻找灵感").put("online",id!=3);JSONArray services=new JSONArray();for(int type=0;type<3;type++)services.put(new JSONObject().put("type",type).put("nick",u.getString("name")).put("number",String.valueOf(id)).put("friends",new JSONArray()).put("blocked",new JSONArray()));u.put("services",services);users.put(u);}root.put("users",users);
-        root.put("groups",new JSONArray()).put("messages",new JSONArray()).put("requests",new JSONArray()).put("feed",new JSONArray()).put("appearances",new JSONObject()).put("follows",new JSONArray().put(2));
+        // 林间晚风 (viewer) and 晴空来信 are QQ friends; 山野手记 has a pending friend request and shares a group.
+        for(int id=1;id<=2;id++)users.getJSONObject(id-1).getJSONArray("services").getJSONObject(0).put("friends",new JSONArray().put(new JSONObject().put("id",3-id).put("contact",0).put("remark","").put("category","我的好友")));
+        JSONArray members=new JSONArray();for(int id=1;id<=3;id++)members.put(new JSONObject().put("id",id).put("services",new JSONArray().put(0)));
+        root.put("groups",new JSONArray().put(new JSONObject().put("id",1001).put("name","听澜同频群").put("owner",1).put("members",members).put("admins",new JSONArray()).put("pending",new JSONArray()).put("notice","欢迎来到听澜").put("mode",0)));
+        JSONArray messages=new JSONArray();
+        messages.put(new JSONObject().put("id","11").put("kind",0).put("sender",2).put("target",1).put("source",0).put("destination",0).put("text","周末一起去看展吗？听说新的山水展很好看。").put("created",1792276200).put("recalled",false).put("read",new JSONArray().put(1)).put("stars",new JSONArray()));
+        messages.put(new JSONObject().put("id","12").put("kind",0).put("sender",1).put("target",2).put("source",0).put("destination",0).put("text","好呀，我们周六上午见。").put("created",1792276500).put("recalled",false).put("read",new JSONArray().put(2)).put("stars",new JSONArray().put(1)));
+        messages.put(new JSONObject().put("id","13").put("kind",1).put("sender",3).put("target",1001).put("source",0).put("destination",0).put("text","今晚八点线上分享，欢迎大家来听。").put("created",1792279800).put("recalled",false).put("read",new JSONArray()).put("stars",new JSONArray()));
+        root.put("messages",messages).put("requests",new JSONArray().put(new JSONObject().put("id","21").put("from",3).put("to",1).put("source",0).put("destination",0).put("reason","你好，想和你一起交流摄影。").put("status",0)));
+        root.put("feed",new JSONArray()).put("appearances",new JSONObject().put("2",new JSONObject().put("bubble","peach").put("frame","rose")).put("3",new JSONObject().put("bubble","sun"))).put("follows",new JSONArray().put(2));
         JSONArray posts=new JSONArray();posts.put(new JSONObject().put("id","1").put("author",2).put("text","#今天的小确幸#\n把喜欢的瞬间收集起来，平凡的日子也会闪闪发光。\n\n这一刻，与你同频。").put("created",1792276200).put("image","").put("likes",18).put("liked",true).put("comments",new JSONArray().put(new JSONObject().put("author",3).put("text","好喜欢这样的生活节奏！"))));posts.put(new JSONObject().put("id","2").put("author",3).put("text","日落不会迟到，快乐也是。今天也拍到了喜欢的天空。").put("created",1792272000).put("image","").put("likes",6).put("liked",false).put("comments",new JSONArray()));root.put("weibo",posts);
         root.put("directMessages",new JSONArray().put(new JSONObject().put("id","1").put("sender",2).put("recipient",1).put("post","1").put("text","谢谢你分享的灵感，一起记录生活吧。").put("created",1792276200).put("read",true)));
         return root;
@@ -53,12 +63,20 @@ public final class UiChecks extends Instrumentation {
         check("伊冯灵感主题");check("晴空来信");check("关注");check("私信");screenshot("03-weibo-phone");
         main(()->{try{set("weiboFilter",1);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("我的关注");check("晴空来信");screenshot("04-following-phone");
         main(()->{try{set("weiboInbox",true);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("微博私信");check("晴空来信");screenshot("05-inbox-phone");
+        // Ordinary services follow the desktop workspace: 会话 list, desktop-style chat and the friends page.
+        main(()->{try{set("weiboInbox",false);set("weiboFilter",0);set("service",0);set("tab",0);set("channel","moments");call("showHome");}catch(Exception e){throw new RuntimeException(e);}});
+        check("每一次相逢");check("晴空来信");check("听澜同频群");check("好呀，我们周六上午见");screenshot("06-chats-phone");
+        main(()->{try{open(0,2);}catch(Exception e){throw new RuntimeException(e);}});check("周末一起去看展吗");check("已读");check("发送消息");screenshot("07-chat-phone");
+        main(()->{try{set("chatKind",-1);set("tab",1);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("新的朋友");check("晴空来信");screenshot("08-friends-phone");
+        main(()->{try{set("tab",5);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("山野手记");check("交流摄影");screenshot("09-notices-phone");
         // A density change recreates activities; never assert against a detached old view tree.
         main(()->activity.finish());
         getUiAutomation().executeShellCommand("wm size 1600x1000").close();getUiAutomation().executeShellCommand("wm density 200").close();Thread.sleep(2500);waitForIdleSync();
         activity=startActivitySync(intent);waitForIdleSync();
-        main(()->{try{set("workspace",model);set("service",2);set("tab",2);set("channel","weibo");set("connectionState","界面验证 · 隔离示例数据");set("weiboInbox",false);set("weiboFilter",0);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("伊冯灵感主题");check("晴空来信");screenshot("06-weibo-tablet");
-        main(()->{try{set("workspace",null);set("service",2);call("showLogin");}catch(Exception e){throw new RuntimeException(e);}});check("欢迎回来");screenshot("07-login-tablet");
+        main(()->{try{set("workspace",model);set("service",2);set("tab",2);set("channel","weibo");set("connectionState","界面验证 · 隔离示例数据");set("weiboInbox",false);set("weiboFilter",0);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("伊冯灵感主题");check("晴空来信");screenshot("10-weibo-tablet");
+        main(()->{try{set("service",0);set("tab",0);set("channel","moments");call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("T I N G L A N");check("心意，在这里相遇");check("听澜同频群");screenshot("11-chats-tablet");
+        main(()->{try{open(0,2);}catch(Exception e){throw new RuntimeException(e);}});check("山水有相逢");check("周末一起去看展吗");check("听澜同频群");screenshot("12-chat-tablet");
+        main(()->{try{set("chatKind",-1);set("workspace",null);set("service",2);call("showLogin");}catch(Exception e){throw new RuntimeException(e);}});check("欢迎回来");screenshot("13-login-tablet");
         result.putString("result","PASS "+checks+" native UI checks; original artwork rendered");finish(Activity.RESULT_OK,result);
     }catch(Throwable e){result.putString("failure",e.toString());finish(Activity.RESULT_CANCELED,result);}}
 }

@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -12,11 +11,12 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.*;
 import org.json.JSONArray;
@@ -27,6 +27,9 @@ import java.util.*;
 
 /** Native Android client. Account authority and all mutations remain on the existing server. */
 public final class MainActivity extends Activity {
+    // Pages follow the desktop sidebar: 会话, 好友, 群组, 通知, 朋友圈 and 账号. Weibo keeps FEED and MINE.
+    private static final int CHATS=0,FRIENDS=1,FEED=2,MINE=3,GROUPS=4,NOTICES=5;
+    private static final String[] EMOJI={"😊","🎉","❤️","👍","🌷","🌙","✨","🌈"};
     private int BG,INK,GREEN,MUTED,LINE;
     private UiKit.Palette palette=UiKit.RIVER;
     private int weiboFilter=0;
@@ -38,16 +41,18 @@ public final class MainActivity extends Activity {
     private ConnectionProfile profile;
     private ChatClient client;
     private Workspace workspace;
-    private LinearLayout root,body,chatMessages;
+    private LinearLayout outer,root,body,chatMessages,conversationPane;
     private ScrollView scroll;
     private TextView status;
     private EditText nickname,password,composer;
-    private Button loginButton,sendButton;
+    private Button loginButton;
+    private View sendButton;
     private int service=0,tab=0,chatKind=-1,chatTarget=0;
-    private String connectionState="未连接",channel="moments";
-    private boolean connecting=false,register=false,sending=false,destroyed=false;
+    private String connectionState="未连接",channel="moments",conversationQuery="";
+    private boolean connecting=false,register=false,sending=false,destroyed=false,flush=false;
     private final Map<String,Runnable> successes=new HashMap<>();
     private final Map<String,Runnable> completions=new HashMap<>();
+    private final Map<String,Bitmap> faces=new HashMap<>();
     private String sendRequest="";
     private String lastReadBatch="";
     @Override public void onCreate(Bundle saved){super.onCreate(saved);prefs=getSharedPreferences("connection",MODE_PRIVATE);service=Math.max(0,Math.min(2,prefs.getInt("service",0)));try{String code=prefs.getString("code","");if(!code.isEmpty())profile=ConnectionProfile.parse(code);}catch(Exception e){profile=null;}showLogin();}
@@ -55,39 +60,45 @@ public final class MainActivity extends Activity {
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration){
         super.onConfigurationChanged(configuration);
         if(workspace==null){String nick=nickname==null?prefs.getString("nickname",""):nickname.getText().toString();String secret=password==null?"":password.getText().toString();showLogin();nickname.setText(nick);password.setText(secret);}
-        else if(chatKind>=0){int kind=chatKind,target=chatTarget;String draft=composer==null?"":composer.getText().toString();if(kind==2)openDirectMessage(target,directPost);else openChat(kind,target);composer.setText(draft);}
+        else if(chatKind>=0){int kind=chatKind,target=chatTarget;String draft=composer==null?"":composer.getText().toString();if(kind==2)openDirectMessage(target,directPost);else openChat(kind,target);if(composer!=null)composer.setText(draft);}
         else showHome();
     }
-    @Override public void onBackPressed(){if(chatKind>=0){hideKeyboard();chatKind=-1;showHome();}else if(workspace!=null)new AlertDialog.Builder(this).setTitle("离开听澜？").setMessage("聊天记录保存在服务器，应用回到后台后可能暂停连接。").setPositiveButton("回到桌面",(d,w)->moveTaskToBack(true)).setNegativeButton("取消",null).show();else super.onBackPressed();}
-    private int dp(float value){return (int)(value*getResources().getDisplayMetrics().density+.5f);}
+    @Override public void onBackPressed(){if(chatKind>=0)closeChat();else if(workspace!=null&&service!=2&&tab!=CHATS)go(CHATS);else if(workspace!=null)new AlertDialog.Builder(this).setTitle("离开听澜？").setMessage("聊天记录保存在服务器，应用回到后台后可能暂停连接。").setPositiveButton("回到桌面",(d,w)->moveTaskToBack(true)).setNegativeButton("取消",null).show();else super.onBackPressed();}
+    private float density(){return getResources().getDisplayMetrics().density;}
+    private int dp(float value){return (int)(value*density()+.5f);}
+    private boolean wide(){return getResources().getConfiguration().screenWidthDp>=720;}
     private GradientDrawable bg(int color,float radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
     private GradientDrawable outline(int color,float radius){GradientDrawable d=bg(color,radius);d.setStroke(dp(1),LINE);return d;}
     private LinearLayout column(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);return v;}
     private LinearLayout row(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.HORIZONTAL);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
     private TextView text(String value,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setLineSpacing(dp(3),1);return t;}
+    private TextView line(String value,int size,int color,boolean bold){TextView t=text(value,size,color,bold);t.setSingleLine(true);t.setEllipsize(TextUtils.TruncateAt.END);return t;}
     private void gap(LinearLayout v,int height){Space s=new Space(this);v.addView(s,new LinearLayout.LayoutParams(1,dp(height)));}
     private Button button(String title,boolean primary,Runnable action){
         Button b=new Button(this);b.setAllCaps(false);b.setText(title);b.setTextSize(14);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-        b.setTextColor(primary?palette.onAccent:blog()?0xff984570:GREEN);b.setBackground(UiKit.touch(primary?GREEN:palette.soft,GREEN,14,getResources().getDisplayMetrics().density));
+        b.setTextColor(primary?palette.onAccent:blog()?0xff984570:GREEN);b.setBackground(UiKit.touch(primary?GREEN:palette.soft,GREEN,14,density()));
         b.setStateListAnimator(null);b.setMinimumWidth(0);b.setMinWidth(0);b.setMinimumHeight(0);b.setMinHeight(dp(44));b.setPadding(dp(13),dp(7),dp(13),dp(7));b.setOnClickListener(v->action.run());return b;
     }
-    private boolean blog(){return service==2||(workspace!=null&&tab==2&&channel.equals("weibo"));}
+    private boolean blog(){return service==2||(workspace!=null&&tab==FEED&&channel.equals("weibo"));}
     private void applyPalette(){
-        palette=blog()?UiKit.YVONNE:UiKit.RIVER;BG=palette.background;INK=palette.ink;GREEN=palette.accent;MUTED=palette.muted;LINE=palette.line;
-        getTheme().applyStyle(blog()?R.style.YvonneTheme:R.style.AppTheme,true);
+        // Like the desktop client: mountain-and-river login, light blue signed-in workspace, Yvonne chrome for Weibo.
+        palette=blog()?UiKit.YVONNE:workspace==null?UiKit.RIVER:UiKit.SKY;BG=palette.background;INK=palette.ink;GREEN=palette.accent;MUTED=palette.muted;LINE=palette.line;
+        getTheme().applyStyle(blog()?R.style.YvonneTheme:workspace==null?R.style.AppTheme:R.style.SkyTheme,true);
         getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
     }
     private View icon(String name,int color,int size){UiKit.Icon view=new UiKit.Icon(this,name,color);view.setLayoutParams(new LinearLayout.LayoutParams(dp(size),dp(size)));return view;}
-    private View iconAction(String name,String label,Runnable tap){
-        FrameLayout hit=new FrameLayout(this);hit.setContentDescription(label);hit.setBackground(UiKit.touch(palette.surface,GREEN,16,getResources().getDisplayMetrics().density));
-        UiKit.Icon image=new UiKit.Icon(this,name,INK);FrameLayout.LayoutParams imageSize=new FrameLayout.LayoutParams(dp(21),dp(21),Gravity.CENTER);hit.addView(image,imageSize);hit.setOnClickListener(v->tap.run());hit.setLayoutParams(new LinearLayout.LayoutParams(dp(46),dp(46)));return hit;
+    private FrameLayout iconAction(String name,String label,Runnable tap){
+        FrameLayout hit=new FrameLayout(this);hit.setContentDescription(label);hit.setBackground(UiKit.touch(palette.surface,GREEN,16,density()));
+        UiKit.Icon image=new UiKit.Icon(this,name,INK);FrameLayout.LayoutParams imageSize=new FrameLayout.LayoutParams(dp(21),dp(21),Gravity.CENTER);hit.addView(image,imageSize);hit.setOnClickListener(v->tap.run());LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(dp(46),dp(46));size.leftMargin=dp(6);hit.setLayoutParams(size);return hit;
     }
     private TextView pill(String label,int fill,int color){TextView t=text(label,11,color,true);t.setPadding(dp(10),dp(4),dp(10),dp(4));t.setBackground(bg(fill,20));return t;}
+    private TextView badge(int count){TextView b=text(count>99?"99+":String.valueOf(count),9,Color.WHITE,true);b.setLineSpacing(0,1);b.setIncludeFontPadding(false);b.setGravity(Gravity.CENTER);b.setMinWidth(dp(17));b.setPadding(dp(5),0,dp(5),0);b.setBackground(bg(UiKit.BADGE,9));return b;}
+    private View dot(int color){View d=new View(this);d.setBackground(bg(color,4));d.setLayoutParams(new LinearLayout.LayoutParams(dp(7),dp(7)));return d;}
     private void serviceStrip(LinearLayout parent,boolean login){
-        LinearLayout strip=row();strip.setPadding(dp(4),dp(4),dp(4),dp(4));strip.setBackground(bg(palette.soft,17));
-        for(int i=0;i<3;i++){final int selected=i;TextView item=text(SERVICES[i],13,service==i?INK:MUTED,service==i);item.setGravity(Gravity.CENTER);item.setBackground(UiKit.touch(service==i?palette.surface:Color.TRANSPARENT,GREEN,13,getResources().getDisplayMetrics().density));item.setContentDescription(SERVICES[i]+(service==i?"，当前服务":""));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(37),1);strip.addView(item,lp);
+        LinearLayout strip=row();strip.setPadding(dp(4),dp(4),dp(4),dp(4));strip.setBackground(bg(login||blog()?palette.soft:0xffe8f1fc,17));
+        for(int i=0;i<3;i++){final int selected=i;TextView item=text(SERVICES[i],13,service==i?INK:MUTED,service==i);item.setGravity(Gravity.CENTER);item.setBackground(UiKit.touch(service==i?palette.surface:Color.TRANSPARENT,GREEN,13,density()));item.setContentDescription(SERVICES[i]+(service==i?"，当前服务":""));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(37),1);strip.addView(item,lp);
             item.setOnClickListener(v->{if(connecting)return;if(login){if(nickname!=null)prefs.edit().putString("nickname",nickname.getText().toString().trim()).apply();service=selected;prefs.edit().putInt("service",service).apply();showLogin();}
-                else if(workspace.account(workspace.viewer,selected).length()>0){service=selected;weiboInbox=false;weiboFilter=0;channel=selected==2?"weibo":"moments";tab=selected==2?2:0;prefs.edit().putInt("service",service).apply();showHome();}else toast("当前账号尚未开通"+SERVICES[selected]+"，可在「我的」开通微博");});
+                else if(workspace.account(workspace.viewer,selected).length()>0){service=selected;weiboInbox=false;weiboFilter=0;channel=selected==2?"weibo":"moments";tab=selected==2?FEED:CHATS;prefs.edit().putInt("service",service).apply();showHome();}else toast("当前账号尚未开通"+SERVICES[selected]+"，可在「我的」开通微博");});
         }parent.addView(strip,new LinearLayout.LayoutParams(-1,dp(45)));
     }
     private EditText input(String hint,boolean secret){
@@ -96,12 +107,25 @@ public final class MainActivity extends Activity {
     }
     private void field(LinearLayout parent,String label,EditText e){parent.addView(text(label,13,MUTED,false));gap(parent,8);parent.addView(e,new LinearLayout.LayoutParams(-1,dp(54)));gap(parent,18);}
     private LinearLayout card(LinearLayout parent){
-        LinearLayout c=column();c.setPadding(dp(19),dp(18),dp(19),dp(18));c.setBackground(outline(palette.surface,22));c.setElevation(dp(.5f));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(12);parent.addView(c,lp);return c;
+        LinearLayout c=column();c.setPadding(dp(19),dp(18),dp(19),dp(18));c.setBackground(outline(palette.surface,workspace==null?22:16));c.setElevation(dp(.5f));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(12);parent.addView(c,lp);return c;
     }
-    private void base(){
-        applyPalette();pageFrame=new FrameLayout(this);pageFrame.setBackgroundColor(BG);root=column();root.setPadding(dp(20),dp(10),dp(20),dp(8));
-        int available=getResources().getDisplayMetrics().widthPixels;FrameLayout.LayoutParams fit=new FrameLayout.LayoutParams(Math.min(available,dp(workspace==null?940:860)),-1,Gravity.TOP|Gravity.CENTER_HORIZONTAL);pageFrame.addView(root,fit);setContentView(pageFrame);
-        pageFrame.setOnApplyWindowInsetsListener((v,insets)->{root.setPadding(dp(20),dp(10)+insets.getSystemWindowInsetTop(),dp(20),dp(8)+insets.getSystemWindowInsetBottom());return insets.consumeSystemWindowInsets();});
+    private void section(LinearLayout parent,String title,int count){TextView t=text(count>=0?title+" · "+count:title,13,MUTED,true);t.setPadding(dp(4),dp(4),0,dp(8));parent.addView(t);}
+    private interface TextAction{void accept(String value);}
+    private TextWatcher watcher(TextAction change){return new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int b,int c){}public void onTextChanged(CharSequence s,int a,int b,int c){}public void afterTextChanged(Editable s){change.accept(s.toString().trim());}};}
+    private EditText searchBox(LinearLayout parent,String hint){
+        LinearLayout box=row();box.setPadding(dp(12),0,dp(6),0);box.setBackground(bg(blog()?palette.soft:0xffe9f1fb,14));box.addView(icon("search",MUTED,18));
+        EditText e=input(hint,false);e.setBackground(null);e.setTextSize(14);e.setPadding(dp(9),0,0,0);box.addView(e,new LinearLayout.LayoutParams(0,-1,1));parent.addView(box,new LinearLayout.LayoutParams(-1,dp(42)));return e;
+    }
+    /** Phone pages fill a centered column; signed-in tablets add the desktop sidebar beside the page. */
+    private void base(){base(false);}
+    private void base(boolean flat){
+        applyPalette();flush=flat;pageFrame=new FrameLayout(this);pageFrame.setBackgroundColor(BG);final boolean shell=workspace!=null&&wide();
+        outer=shell?row():column();outer.setGravity(Gravity.TOP);root=outer;
+        int available=getResources().getDisplayMetrics().widthPixels;FrameLayout.LayoutParams fit=new FrameLayout.LayoutParams(shell?-1:Math.min(available,dp(workspace==null?940:860)),-1,Gravity.TOP|Gravity.CENTER_HORIZONTAL);pageFrame.addView(outer,fit);setContentView(pageFrame);
+        if(shell){sidebar(outer);root=column();outer.addView(root,new LinearLayout.LayoutParams(0,-1,1));}
+        pageFrame.setOnApplyWindowInsetsListener((v,insets)->{int top=insets.getSystemWindowInsetTop(),bottom=insets.getSystemWindowInsetBottom();
+            if(shell){outer.setPadding(0,top,0,bottom);root.setPadding(flush?0:dp(28),flush?0:dp(20),flush?0:dp(28),flush?0:dp(12));}
+            else root.setPadding(dp(20),dp(10)+top,dp(20),dp(8)+bottom);return insets.consumeSystemWindowInsets();});
     }
     private void makeScroll(){scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);scroll.setVerticalScrollBarEnabled(false);body=column();body.setPadding(0,dp(6),0,dp(18));scroll.addView(body,new ScrollView.LayoutParams(-1,-2));root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));}
     private void top(String title,String sub,String action,Runnable tap){
@@ -109,18 +133,60 @@ public final class MainActivity extends Activity {
         if(sub!=null&&!sub.isEmpty())labels.addView(text(sub,11,MUTED,false));h.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
         if(action!=null){String glyph=action.equals("返回")?"back":action.equals("添加")?"plus":action.contains("连接")||action.equals("服务器")?"globe":action.equals("私信")?"mail":"refresh";h.addView(iconAction(glyph,action,tap));}root.addView(h);gap(root,12);
     }
+    private boolean online(){return client!=null&&client.isOnline();}
     private void connectionLabel(){
-        status=text(connectionState,11,MUTED,false);status.setPadding(dp(3),0,0,dp(7));root.addView(status);
+        if(workspace!=null&&wide())return;LinearLayout line=row();line.setPadding(dp(3),0,0,dp(7));line.addView(dot(online()?UiKit.ONLINE:MUTED));
+        status=text(connectionState,11,MUTED,false);status.setPadding(dp(6),0,0,0);line.addView(status);root.addView(line);
     }
+    private static final class Nav{
+        final String label,glyph,category;final int badge;final boolean active;final Runnable go;
+        Nav(String label,String glyph,int badge,boolean active,String category,Runnable go){this.label=label;this.glyph=glyph;this.badge=badge;this.active=active;this.category=category;this.go=go;}
+    }
+    private List<Nav> navEntries(boolean side){
+        List<Nav> out=new ArrayList<>();
+        if(service==2){int current=tab==MINE?3:weiboInbox?2:weiboFilter==1?1:0;String[] labels=side?new String[]{"微博首页","我的关注","微博私信","我的空间"}:new String[]{"广场","关注","私信","我的"};String[] glyphs={"compass","heart","mail","person"};
+            for(int i=0;i<4;i++){final int index=i;out.add(new Nav(labels[i],glyphs[i],0,current==i,side&&i==3?"频道与个人空间":null,()->{hideKeyboard();chatKind=-1;tab=index==3?MINE:FEED;channel="weibo";weiboInbox=index==2;weiboFilter=index==1?1:0;showHome();}));}
+            return out;
+        }
+        int notices=noticeCount();
+        out.add(new Nav("会话","chat",unreadTotal(),tab==CHATS,null,()->go(CHATS)));
+        out.add(new Nav("好友","users",side?0:notices,tab==FRIENDS||(!side&&tab==NOTICES),null,()->go(FRIENDS)));
+        out.add(new Nav("群组","group",0,tab==GROUPS,null,()->go(GROUPS)));
+        if(side)out.add(new Nav("通知","bell",notices,tab==NOTICES,null,()->go(NOTICES)));
+        out.add(new Nav("朋友圈","compass",0,tab==FEED,side?"我的听澜":null,()->{channel="moments";go(FEED);}));
+        out.add(new Nav(side?"账号":"我的","person",0,tab==MINE,null,()->go(MINE)));
+        return out;
+    }
+    private void go(int page){hideKeyboard();chatKind=-1;tab=page;weiboInbox=false;showHome();}
     private void navigation(){
-        LinearLayout nav=row();nav.setPadding(dp(4),dp(8),dp(4),dp(2));nav.setBackground(bg(palette.surface,24));
-        String[] names=service==2?new String[]{"广场","关注","私信","我的"}:new String[]{"消息","联系人","发现","我的"};
-        String[] glyphs=service==2?new String[]{"compass","heart","mail","person"}:new String[]{"chat","users","compass","person"};
-        int current=service==2?(tab==3?3:weiboInbox?2:weiboFilter==1?1:0):tab;
-        for(int i=0;i<4;i++){final int index=i;boolean active=current==i;LinearLayout item=column();item.setGravity(Gravity.CENTER);item.setContentDescription(names[i]);
-            FrameLayout capsule=new FrameLayout(this);capsule.setBackground(bg(active?palette.soft:Color.TRANSPARENT,14));UiKit.Icon glyph=new UiKit.Icon(this,glyphs[i],active?GREEN:MUTED);capsule.addView(glyph,new FrameLayout.LayoutParams(dp(22),dp(22),Gravity.CENTER));item.addView(capsule,new LinearLayout.LayoutParams(dp(52),dp(31)));TextView label=text(names[i],10,active?INK:MUTED,active);label.setGravity(Gravity.CENTER);item.addView(label);nav.addView(item,new LinearLayout.LayoutParams(0,dp(55),1));
-            item.setOnClickListener(v->{if(service==2){tab=index==3?3:2;channel="weibo";weiboInbox=index==2;weiboFilter=index==1?1:0;}else tab=index;showHome();});
-        }root.addView(nav,new LinearLayout.LayoutParams(-1,dp(65)));
+        LinearLayout nav=row();nav.setPadding(dp(4),dp(6),dp(4),dp(4));nav.setBackground(outline(palette.surface,22));
+        for(Nav n:navEntries(false)){LinearLayout item=column();item.setGravity(Gravity.CENTER);item.setContentDescription(n.label+(n.badge>0?"，"+n.badge+" 条新内容":""));
+            FrameLayout capsule=new FrameLayout(this);capsule.setBackground(bg(n.active?palette.soft:Color.TRANSPARENT,14));UiKit.Icon glyph=new UiKit.Icon(this,n.glyph,n.active?GREEN:MUTED);capsule.addView(glyph,new FrameLayout.LayoutParams(dp(22),dp(22),Gravity.CENTER));
+            if(n.badge>0)capsule.addView(badge(n.badge),new FrameLayout.LayoutParams(-2,dp(16),Gravity.TOP|Gravity.END));
+            item.addView(capsule,new LinearLayout.LayoutParams(dp(54),dp(31)));TextView label=text(n.label,10,n.active?INK:MUTED,n.active);label.setGravity(Gravity.CENTER);item.addView(label);
+            nav.addView(item,new LinearLayout.LayoutParams(0,dp(55),1));item.setOnClickListener(v->n.go.run());
+        }LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(65));lp.topMargin=dp(4);root.addView(nav,lp);
+    }
+    /** Tablet counterpart of the desktop MainWindowHsx sidebar. */
+    private void sidebar(LinearLayout parent){
+        boolean wb=blog();LinearLayout side=column();side.setPadding(dp(12),dp(20),dp(12),dp(14));
+        side.setBackground(wb?bg(0xff251f30,0):new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xfff6fbff,0xffe4f0ff}));
+        LinearLayout brand=row();brand.setPadding(dp(10),0,0,0);brand.addView(icon("wave",wb?0xffed8bbb:GREEN,26));TextView name=text(wb?"绚色微博":"听澜",wb?21:25,wb?0xffffd5e9:0xff163e70,true);name.setPadding(dp(8),0,0,0);brand.addView(name);side.addView(brand);
+        TextView mark=text(wb?"YVONNE / WEIBO":"T I N G L A N",8,wb?0xffb99bb8:0xff92acce,false);mark.setLetterSpacing(.2f);mark.setPadding(dp(46),dp(2),0,0);side.addView(mark);gap(side,16);
+        LinearLayout me=row();me.setPadding(dp(8),dp(8),dp(6),dp(8));me.setBackground(UiKit.touch(wb?0xff342a40:0x80ffffff,GREEN,14,density()));me.addView(avatarUser(workspace.viewer,44),new LinearLayout.LayoutParams(dp(44),dp(44)));
+        LinearLayout who=column();who.setPadding(dp(10),0,0,0);who.addView(line(workspace.name(workspace.viewer),14,wb?0xfff5d9eb:0xff233b5d,true));LinearLayout state=row();state.addView(dot(online()?UiKit.ONLINE:MUTED));status=line(connectionState,10,wb?0xffcdb3cc:MUTED,false);status.setPadding(dp(5),0,0,0);state.addView(status,new LinearLayout.LayoutParams(0,-2,1));who.addView(state);
+        me.addView(who,new LinearLayout.LayoutParams(0,-2,1));me.setContentDescription("我的资料");me.setOnClickListener(v->{if(service==2){chatKind=-1;tab=MINE;showHome();}else go(MINE);});side.addView(me);gap(side,14);
+        for(Nav n:navEntries(true)){if(n.category!=null){gap(side,10);TextView c=text(n.category,9,wb?0xffb99bb8:0xff95a6be,false);c.setLetterSpacing(.08f);c.setPadding(dp(14),0,0,dp(6));side.addView(c);}side.addView(sideItem(n,wb),new LinearLayout.LayoutParams(-1,dp(46)));gap(side,3);}
+        side.addView(new View(this),new LinearLayout.LayoutParams(1,0,1));
+        TextView label=text("当前服务",10,wb?0xffb99bb8:MUTED,false);label.setPadding(dp(6),0,0,dp(6));side.addView(label);serviceStrip(side,false);gap(side,14);
+        TextView quote=text(wb?"灵感，正在连线。":"山水有相逢。",12,wb?0xffb99bb8:0xff8ba5c6,false);quote.setTypeface(Typeface.SERIF);quote.setPadding(dp(10),0,0,0);side.addView(quote);
+        parent.addView(side,new LinearLayout.LayoutParams(dp(212),-1));
+    }
+    private View sideItem(Nav n,boolean wb){
+        int on=wb?0xffffe5f1:GREEN,off=wb?0xffcdb3cc:0xff526d91;LinearLayout item=row();item.setPadding(dp(12),0,dp(10),0);
+        item.setBackground(UiKit.touch(n.active?(wb?0xff4a3553:0xffd5eaff):Color.TRANSPARENT,on,11,density()));item.addView(icon(n.glyph,n.active?on:(wb?0xffb99bb8:0xff6580a6),20));
+        TextView label=text(n.label,14,n.active?on:off,n.active);label.setPadding(dp(12),0,0,0);item.addView(label,new LinearLayout.LayoutParams(0,-2,1));
+        if(n.badge>0)item.addView(badge(n.badge),new LinearLayout.LayoutParams(-2,dp(18)));item.setContentDescription(n.label);item.setOnClickListener(v->n.go.run());return item;
     }
     private View artwork(boolean yvonne,int height){UiKit.Artwork view=new UiKit.Artwork(this,yvonne);view.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(height)));return view;}
 
@@ -152,73 +218,227 @@ public final class MainActivity extends Activity {
         final ChatClient[] holder=new ChatClient[1];
         ChatClient next=new ChatClient(profile,nick,secret,service,register,new ChatClient.Listener(){
             private void ui(Runnable r){runOnUiThread(()->{if(!destroyed&&client==holder[0])r.run();});}
-            public void state(String detail,boolean online){ui(()->{connectionState=detail;if(status!=null)status.setText(detail);if(sendButton!=null)sendButton.setEnabled(online&&!sending);});}
-            public void snapshot(JSONObject data){ui(()->{try{boolean first=workspace==null;int position=scroll==null?0:scroll.getScrollY();workspace=new Workspace(data);connecting=false;register=false;if(first){tab=service==2?2:0;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;}String name=workspace.name(workspace.viewer);prefs.edit().putString("nickname",name).apply();if(workspace.account(workspace.viewer,service).length()==0){JSONArray all=workspace.users.get(workspace.viewer).getJSONArray("services");service=all.getJSONObject(0).getInt("type");}if(chatKind>=0)renderMessages();else{showHome();if(!first)scroll.post(()->scroll.scrollTo(0,position));}}catch(Exception e){logout();toast("同步失败："+e.getMessage());}});}
+            public void state(String detail,boolean online){ui(()->{connectionState=detail;if(status!=null)status.setText(detail);enableSend(online&&!sending);});}
+            public void snapshot(JSONObject data){ui(()->{try{boolean first=workspace==null;int position=scroll==null?0:scroll.getScrollY();workspace=new Workspace(data);connecting=false;register=false;if(first){tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;}String name=workspace.name(workspace.viewer);prefs.edit().putString("nickname",name).apply();if(workspace.account(workspace.viewer,service).length()==0){JSONArray all=workspace.users.get(workspace.viewer).getJSONArray("services");service=all.getJSONObject(0).getInt("type");}
+                if(chatKind>=0){if(conversationPane!=null)fillConversations(conversationPane,conversationQuery);renderMessages();}else{showHome();if(!first)scroll.post(()->scroll.scrollTo(0,position));}}catch(Exception e){logout();toast("同步失败："+e.getMessage());}});}
             public void result(String id,JSONObject result){ui(()->{Runnable done=completions.remove(id);if(done!=null)done.run();Runnable good=successes.remove(id);if(result.optBoolean("ok")){if(good!=null)good.run();}else toast(result.optString("detail","服务器拒绝操作"));});}
             public void failure(String detail,boolean terminal){ui(()->{if(terminal){logout();new AlertDialog.Builder(MainActivity.this).setTitle("连接未完成").setMessage(detail).setPositiveButton("知道了",null).show();}else toast(detail);});}
         });holder[0]=next;client=next;next.start();
     }
-    private void logout(){if(client!=null){client.close();client=null;}workspace=null;connecting=false;sending=false;chatKind=-1;sendRequest="";composer=null;sendButton=null;successes.clear();completions.clear();showLogin();}
+    private void logout(){if(client!=null){client.close();client=null;}workspace=null;connecting=false;sending=false;chatKind=-1;sendRequest="";composer=null;sendButton=null;conversationPane=null;faces.clear();successes.clear();completions.clear();showLogin();}
     private String command(JSONObject data,Runnable good,Runnable done){try{if(client==null)throw new IllegalStateException("请先登录");String id=client.command(data);if(good!=null)successes.put(id,good);if(done!=null)completions.put(id,done);return id;}catch(Exception e){toast(e.getMessage());if(done!=null)done.run();return "";}}
     private void command(JSONObject data){command(data,null,null);}
+
+    private String[] heading(){
+        if(service==2)return tab==MINE?new String[]{"我的空间","个人资料与服务，在此从容打理"}:weiboInbox?new String[]{"微博私信","同频的人，会有回音"}:weiboFilter==1?new String[]{"我的关注","关注的灵感，正在路上"}:new String[]{"微博","发现 · 关注 · 与同频的人交换灵感"};
+        switch(tab){
+            case FRIENDS:return new String[]{"好友","与你相伴的人"};
+            case GROUPS:return new String[]{"群组","在这里，找到同频的人"};
+            case NOTICES:return new String[]{"通知","好友邀请与群组申请，都在这里"};
+            case FEED:return channel.equals("weibo")?new String[]{"微博","发现 · 关注 · 与同频的人交换灵感"}:new String[]{"朋友圈","把生活分享给朋友"};
+            case MINE:return new String[]{"我的","照顾好每一个自己"};
+            default:return new String[]{"会话","每一次相逢，都值得倾听"};
+        }
+    }
+    private View bellAction(){int count=noticeCount();FrameLayout bell=iconAction("bell",count>0?"通知，"+count+" 条待处理":"通知",()->go(NOTICES));if(count>0)bell.addView(badge(count),new FrameLayout.LayoutParams(-2,dp(16),Gravity.TOP|Gravity.END));return bell;}
+    private void pageHeader(){
+        String[] h=heading();boolean big=wide();LinearLayout bar=row();bar.setPadding(0,dp(4),0,dp(4));
+        if(!big){View me=avatarUser(workspace.viewer,40);me.setContentDescription("我的资料");me.setOnClickListener(v->{if(service==2){tab=MINE;showHome();}else go(MINE);});LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(dp(40),dp(40));size.rightMargin=dp(12);bar.addView(me,size);}
+        LinearLayout labels=column();labels.addView(line(h[0],big?24:21,INK,true));labels.addView(line(h[1],big?12:11,MUTED,false));bar.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+        int actions=0;
+        if(service!=2&&tab!=NOTICES){bar.addView(bellAction());actions++;}
+        if(service!=2&&(tab==FRIENDS||tab==CHATS)){bar.addView(iconAction("plus","添加好友",this::addFriend));actions++;}
+        else if(service!=2&&tab==GROUPS){bar.addView(iconAction("plus","创建群聊",this::createGroup));actions++;}
+        else if(service==2&&!weiboInbox&&tab!=MINE){bar.addView(iconAction("mail","私信",()->{tab=FEED;weiboInbox=true;showHome();}));actions++;}
+        if(actions<2)bar.addView(iconAction("refresh","刷新",()->command(Wire.obj("op","sync"))));
+        root.addView(bar);gap(root,big?14:10);
+    }
     private void showHome(){
-        if(workspace==null){showLogin();return;}chatKind=-1;composer=null;sendButton=null;base();
-        String[] names={"消息","通讯录","发现","我的"};String title=service==2?(tab==3?"我的空间":weiboInbox?"微博私信":weiboFilter==1?"我的关注":"微博"):names[tab];
-        top(title,null,tab==1?"添加":service==2&&!weiboInbox&&tab!=3?"私信":"刷新",()->{if(tab==1)addFriend();else if(service==2&&!weiboInbox&&tab!=3){tab=2;weiboInbox=true;showHome();}else command(Wire.obj("op","sync"));});
-        serviceStrip(root,false);gap(root,9);connectionLabel();makeScroll();if(tab==0)conversations();else if(tab==1)contacts();else if(tab==2){if(weiboInbox&&channel.equals("weibo"))renderWeiboInbox();else feed();}else mine();navigation();
+        if(workspace==null){showLogin();return;}chatKind=-1;composer=null;sendButton=null;conversationPane=null;
+        if(service==2&&tab!=MINE)tab=FEED;
+        boolean split=wide()&&service!=2&&tab==CHATS;base(split);
+        if(split){emptyChat(splitChats());return;}
+        pageHeader();if(!wide()){serviceStrip(root,false);gap(root,9);connectionLabel();}makeScroll();
+        if(tab==CHATS)conversations();else if(tab==FRIENDS)friends();else if(tab==GROUPS)groups();else if(tab==NOTICES)notices();
+        else if(tab==FEED){if(weiboInbox&&channel.equals("weibo"))renderWeiboInbox();else feed();}else mine();
+        if(!wide())navigation();
     }
-    private TextView avatar(String title,boolean group){TextView a=text(title.isEmpty()?"澜":title.substring(0,1),20,GREEN,true);a.setGravity(Gravity.CENTER);a.setBackground(bg(palette.soft,17));return a;}
-    private View avatarUser(int id,int size){
-        String encoded=workspace==null?"":workspace.raw.optJSONObject("appearances")==null?"":workspace.raw.optJSONObject("appearances").optJSONObject(String.valueOf(id))==null?"":workspace.raw.optJSONObject("appearances").optJSONObject(String.valueOf(id)).optString("avatar");
-        if(!encoded.isEmpty()&&encoded.length()<180000)try{byte[] bytes=java.util.Base64.getDecoder().decode(encoded);BitmapFactory.Options options=new BitmapFactory.Options();options.inScaled=false;options.inSampleSize=2;Bitmap bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);if(bitmap!=null){ImageView image=new ImageView(this);image.setImageBitmap(bitmap);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setBackground(bg(palette.soft,16));image.setClipToOutline(true);return image;}}catch(Exception ignored){}
-        return avatar(workspace==null?"澜":workspace.name(id),false);
+    private JSONObject appearance(int id){JSONObject all=workspace==null?null:workspace.raw.optJSONObject("appearances");JSONObject look=all==null?null:all.optJSONObject(String.valueOf(id));return look==null?new JSONObject():look;}
+    private Bitmap face(String encoded){
+        if(encoded.isEmpty()||encoded.length()>=180000)return null;if(faces.containsKey(encoded))return faces.get(encoded);Bitmap bitmap=null;
+        try{byte[] bytes=java.util.Base64.getDecoder().decode(encoded);BitmapFactory.Options options=new BitmapFactory.Options();options.inScaled=false;options.inSampleSize=2;bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);}catch(Exception ignored){}
+        faces.put(encoded,bitmap);return bitmap;
     }
-    private void personRow(LinearLayout parent,String title,String subtitle,boolean group,String badge,Runnable action){
-        LinearLayout r=row();r.setPadding(dp(15),dp(15),dp(15),dp(15));r.setBackground(UiKit.touch(palette.surface,GREEN,20,getResources().getDisplayMetrics().density));r.addView(avatar(title,group),new LinearLayout.LayoutParams(dp(48),dp(48)));LinearLayout labels=column();labels.setPadding(dp(13),0,dp(8),0);labels.addView(text(title,16,INK,true));gap(labels,4);TextView sub=text(subtitle,12,MUTED,false);sub.setMaxLines(1);sub.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(sub);r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
-        if(!badge.isEmpty())r.addView(badge.contains("未读")?pill(badge,GREEN,palette.onAccent):text(badge,10,MUTED,false));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(8);parent.addView(r,lp);r.setOnClickListener(v->action.run());
+    private View avatarUser(int id,int size){JSONObject look=appearance(id);View v=new UiKit.Avatar(this,workspace==null?"澜":workspace.name(id),id,face(look.optString("avatar")),look.optString("frame","none"),false);v.setLayoutParams(new LinearLayout.LayoutParams(dp(size),dp(size)));return v;}
+    private View groupAvatar(int id,String name,int size){View v=new UiKit.Avatar(this,name,id,null,"none",true);v.setLayoutParams(new LinearLayout.LayoutParams(dp(size),dp(size)));return v;}
+    /** Desktop ConversationDelegateHsx row: avatar, name and time, preview and unread badge. */
+    private LinearLayout listRow(LinearLayout parent,View face,String title,String time,String subtitle,int unread,String tag,boolean selected,Runnable tap){
+        LinearLayout r=row();r.setPadding(dp(12),dp(11),dp(12),dp(11));r.setBackground(UiKit.touch(selected?(blog()?palette.soft:0xffdceeff):Color.TRANSPARENT,GREEN,14,density()));r.addView(face,new LinearLayout.LayoutParams(dp(50),dp(50)));
+        LinearLayout labels=column();labels.setPadding(dp(13),0,0,0);LinearLayout first=row();first.addView(line(title,15,INK,true),new LinearLayout.LayoutParams(0,-2,1));if(!time.isEmpty()){TextView t=text(time,10,MUTED,false);t.setPadding(dp(8),0,0,0);first.addView(t);}labels.addView(first);gap(labels,3);
+        LinearLayout second=row();second.addView(line(subtitle,12,MUTED,false),new LinearLayout.LayoutParams(0,-2,1));
+        if(unread>0){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(17));lp.leftMargin=dp(8);second.addView(badge(unread),lp);}
+        else if(!tag.isEmpty()){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.leftMargin=dp(8);second.addView(pill(tag,palette.soft,GREEN),lp);}
+        labels.addView(second);r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));r.setContentDescription(title+(unread>0?"，"+unread+" 条未读":""));r.setOnClickListener(v->tap.run());
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(3);parent.addView(r,lp);return r;
     }
-    private void empty(String title,String detail){
-        LinearLayout c=column();c.setGravity(Gravity.CENTER);c.setPadding(dp(20),dp(30),dp(20),dp(28));FrameLayout circle=new FrameLayout(this);circle.setBackground(bg(palette.soft,32));UiKit.Icon glyph=new UiKit.Icon(this,blog()?"compass":"chat",GREEN);circle.addView(glyph,new FrameLayout.LayoutParams(dp(28),dp(28),Gravity.CENTER));c.addView(circle,new LinearLayout.LayoutParams(dp(64),dp(64)));gap(c,16);c.addView(text(title,18,INK,true));gap(c,8);TextView hint=text(detail,13,MUTED,false);hint.setGravity(Gravity.CENTER);c.addView(hint);body.addView(c,new LinearLayout.LayoutParams(-1,-2));
+    private void empty(LinearLayout parent,String title,String detail){
+        LinearLayout c=column();c.setGravity(Gravity.CENTER);c.setPadding(dp(20),dp(30),dp(20),dp(28));FrameLayout circle=new FrameLayout(this);circle.setBackground(bg(palette.soft,32));UiKit.Icon glyph=new UiKit.Icon(this,blog()?"compass":"chat",GREEN);circle.addView(glyph,new FrameLayout.LayoutParams(dp(28),dp(28),Gravity.CENTER));c.addView(circle,new LinearLayout.LayoutParams(dp(64),dp(64)));gap(c,16);c.addView(text(title,18,INK,true));gap(c,8);TextView hint=text(detail,13,MUTED,false);hint.setGravity(Gravity.CENTER);c.addView(hint);parent.addView(c,new LinearLayout.LayoutParams(-1,-2));
+    }
+    private int unreadTotal(){int count=0;for(Workspace.Conversation c:workspace.conversations(service))count+=c.unread;return count;}
+    private boolean manages(JSONObject group){return group.optInt("owner")==workspace.viewer||Workspace.contains(group.optJSONArray("admins"),workspace.viewer);}
+    /** Same scope as the desktop 通知 badge: incoming friend requests for this service and join requests in groups the viewer manages. */
+    private int noticeCount(){
+        if(workspace==null||service==2)return 0;int count=0;JSONArray list=workspace.array("requests");
+        for(int i=0;i<list.length();i++){JSONObject r=list.optJSONObject(i);if(r!=null&&r.optInt("status",-1)==0&&r.optInt("to")==workspace.viewer&&r.optInt("destination")==service)count++;}
+        for(JSONObject g:workspace.groups.values())if(workspace.member(g,service)&&manages(g)){JSONArray pending=g.optJSONArray("pending");if(pending!=null)count+=pending.length();}
+        return count;
     }
 
-    private void conversations(){List<Workspace.Conversation> all=workspace.conversations(service);if(all.isEmpty()){empty("还没有会话","去通讯录添加好友，或创建你的第一个群聊。");return;}for(Workspace.Conversation c:all)personRow(body,c.title,c.preview,c.kind==1,c.unread>0?c.unread+" 条未读":clock(c.time),()->openChat(c.kind,c.target));}
-    private void contacts(){
-        LinearLayout tools=row();tools.addView(button("好友申请",false,this::requests),new LinearLayout.LayoutParams(0,dp(46),1));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(46),1);lp.leftMargin=dp(8);tools.addView(button("创建群聊",false,this::createGroup),lp);body.addView(tools);gap(body,18);body.addView(text("我的好友",14,MUTED,true));gap(body,10);
-        JSONArray friends=workspace.account(workspace.viewer,service).optJSONArray("friends");int count=friends==null?0:friends.length();if(count==0)body.addView(text("好友列表为空，点击右上角添加好友。",13,MUTED,false));
-        for(int i=0;i<count;i++){JSONObject f=friends.optJSONObject(i);if(f==null)continue;int id=f.optInt("id");JSONObject u=workspace.users.get(id);personRow(body,workspace.display(id,service),"ID "+id+" · "+(u!=null&&u.optBoolean("online")?"在线":"离线")+" · "+SERVICES[Math.max(0,Math.min(2,f.optInt("contact")))],false,"聊天",()->openChat(0,id));}
-        gap(body,18);body.addView(text("群聊",14,MUTED,true));gap(body,10);for(JSONObject g:workspace.groups.values()){int id=g.optInt("id");boolean joined=workspace.member(g,service);personRow(body,g.optString("name"),"群号 "+id+" · "+(joined?"已加入":"可申请加入"),true,joined?"聊天":"申请",()->{if(joined)openChat(1,id);else new AlertDialog.Builder(this).setTitle("申请加入此群？").setMessage(g.optString("name")).setNegativeButton("取消",null).setPositiveButton("申请",(d,w)->command(Wire.obj("op","group.apply","group",id))).show();});}
+    private void conversations(){EditText search=searchBox(body,"搜索联系人或群聊");gap(body,10);LinearLayout list=column();body.addView(list);fillConversations(list,"");search.addTextChangedListener(watcher(q->fillConversations(list,q)));}
+    private void fillConversations(LinearLayout list,String query){
+        conversationQuery=query;list.removeAllViews();int shown=0;String needle=query.toLowerCase(Locale.ROOT);
+        for(Workspace.Conversation c:workspace.conversations(service)){
+            if(!needle.isEmpty()&&!(c.title+c.preview).toLowerCase(Locale.ROOT).contains(needle))continue;shown++;
+            listRow(list,c.kind==1?groupAvatar(c.target,c.title,50):avatarUser(c.target,50),c.title,when(c.time),c.preview,c.unread,"",chatKind==c.kind&&chatTarget==c.target,()->openChat(c.kind,c.target));
+        }
+        if(shown==0)empty(list,needle.isEmpty()?"还没有会话":"没有找到相关会话",needle.isEmpty()?"去好友页添加好友，或创建你的第一个群聊。":"换个关键词试试。");
+    }
+    private View tile(String glyph,String title,String detail,Runnable tap){
+        LinearLayout t=row();t.setPadding(dp(12),dp(12),dp(12),dp(12));t.setBackground(UiKit.touch(palette.surface,GREEN,16,density()));FrameLayout circle=new FrameLayout(this);circle.setBackground(bg(palette.soft,19));circle.addView(new UiKit.Icon(this,glyph,GREEN),new FrameLayout.LayoutParams(dp(20),dp(20),Gravity.CENTER));t.addView(circle,new LinearLayout.LayoutParams(dp(38),dp(38)));
+        LinearLayout labels=column();labels.setPadding(dp(10),0,0,0);labels.addView(line(title,14,INK,true));labels.addView(line(detail,11,MUTED,false));t.addView(labels,new LinearLayout.LayoutParams(0,-2,1));t.setContentDescription(title);t.setOnClickListener(v->tap.run());return t;
+    }
+    private void friends(){
+        int pending=noticeCount();LinearLayout tools=row();tools.addView(tile("bell","新的朋友",pending>0?pending+" 条待处理":"好友与入群申请",()->go(NOTICES)),new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,-2,1);right.leftMargin=dp(8);tools.addView(tile("plus","添加好友","向云端用户发送申请",this::addFriend),right);body.addView(tools);gap(body,16);
+        JSONArray friends=workspace.account(workspace.viewer,service).optJSONArray("friends");int count=friends==null?0:friends.length();section(body,"我的好友",count);
+        if(count==0)empty(body,"还没有好友","点击「添加好友」，发送第一条好友申请。");
+        for(int i=0;i<count;i++){JSONObject f=friends.optJSONObject(i);if(f==null)continue;int id=f.optInt("id");JSONObject u=workspace.users.get(id);boolean on=u!=null&&u.optBoolean("online");String place=u==null?"":u.optString("location");
+            listRow(body,avatarUser(id,50),workspace.display(id,service),"",(on?"● 在线":"○ 离线")+" · "+SERVICES[Math.max(0,Math.min(2,f.optInt("contact")))]+(place.isEmpty()||place.equals("未公开")?"":" · "+place),0,"聊天",false,()->openChat(0,id));}
+    }
+    private void groups(){
+        body.addView(button("创建群聊",true,this::createGroup),new LinearLayout.LayoutParams(-1,dp(46)));gap(body,16);
+        List<JSONObject> joined=new ArrayList<>(),others=new ArrayList<>();for(JSONObject g:workspace.groups.values())(workspace.member(g,service)?joined:others).add(g);
+        section(body,"我加入的群",joined.size());if(joined.isEmpty())empty(body,"还没有加入群聊","创建一个群，或申请加入下方的群。");
+        for(JSONObject g:joined){int id=g.optInt("id");JSONArray members=g.optJSONArray("members");String name=g.optString("name");listRow(body,groupAvatar(id,name,50),name,"","群号 "+id+" · "+(members==null?0:members.length())+" 人"+(manages(g)?" · 管理者":""),0,"",false,()->openChat(1,id));}
+        if(!others.isEmpty()){gap(body,10);section(body,"可申请加入",others.size());
+            for(JSONObject g:others){String name=g.optString("name");int gid=g.optInt("id");JSONArray members=g.optJSONArray("members");listRow(body,groupAvatar(gid,name,50),name,"","群号 "+gid+" · "+(members==null?0:members.length())+" 人",0,"申请",false,()->new AlertDialog.Builder(this).setTitle("申请加入此群？").setMessage(name).setNegativeButton("取消",null).setPositiveButton("申请",(d,w)->command(Wire.obj("op","group.apply","group",gid))).show());}}
+    }
+    private void notices(){
+        JSONArray list=workspace.array("requests");int found=0;
+        for(int i=0;i<list.length();i++){JSONObject r=list.optJSONObject(i);if(r==null||r.optInt("status",-1)!=0)continue;boolean incoming=r.optInt("to")==workspace.viewer&&r.optInt("destination")==service;boolean outgoing=r.optInt("from")==workspace.viewer&&r.optInt("source")==service;if(!incoming&&!outgoing)continue;
+            if(found++==0)section(body,"好友申请",-1);int peer=r.optInt(incoming?"from":"to");String id=r.optString("id");LinearLayout c=card(body);LinearLayout head=row();head.addView(avatarUser(peer,44),new LinearLayout.LayoutParams(dp(44),dp(44)));
+            LinearLayout who=column();who.setPadding(dp(12),0,0,0);who.addView(line(workspace.name(peer),15,INK,true));who.addView(line(incoming?"通过 "+SERVICES[Math.max(0,Math.min(2,r.optInt("source")))]+" 申请添加你为好友":"已发送申请，等待对方确认",11,MUTED,false));head.addView(who,new LinearLayout.LayoutParams(0,-2,1));c.addView(head);
+            String reason=r.optString("reason");if(!reason.isEmpty()){gap(c,10);TextView quote=text(reason,13,INK,false);quote.setPadding(dp(12),dp(9),dp(12),dp(9));quote.setBackground(bg(BG,10));c.addView(quote);}
+            gap(c,12);LinearLayout actions=row();
+            if(incoming){actions.addView(button("接受",true,()->command(Wire.obj("op","friend.respond","message",id,"enabled",true))),new LinearLayout.LayoutParams(0,dp(44),1));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(44),1);lp.leftMargin=dp(8);actions.addView(button("拒绝",false,()->command(Wire.obj("op","friend.respond","message",id,"enabled",false))),lp);}
+            else actions.addView(button("撤销申请",false,()->command(Wire.obj("op","friend.cancel","message",id))),new LinearLayout.LayoutParams(-1,dp(44)));c.addView(actions);
+        }
+        int joins=0;
+        for(JSONObject g:workspace.groups.values()){if(!workspace.member(g,service)||!manages(g))continue;JSONArray pending=g.optJSONArray("pending");if(pending==null)continue;final int groupId=g.optInt("id");
+            for(int j=0;j<pending.length();j++){JSONArray request=pending.optJSONArray(j);if(request==null)continue;if(joins++==0){gap(body,8);section(body,"入群申请",-1);}int user=request.optInt(0),contact=request.optInt(1);
+                LinearLayout c=card(body);LinearLayout head=row();head.addView(avatarUser(user,44),new LinearLayout.LayoutParams(dp(44),dp(44)));LinearLayout who=column();who.setPadding(dp(12),0,0,0);who.addView(line(workspace.name(user),15,INK,true));who.addView(line("申请加入 "+g.optString("name"),11,MUTED,false));head.addView(who,new LinearLayout.LayoutParams(0,-2,1));c.addView(head);gap(c,12);
+                LinearLayout actions=row();actions.addView(button("同意加入",true,()->command(Wire.obj("op","group.approve","group",groupId,"target",user,"contact",contact,"enabled",true))),new LinearLayout.LayoutParams(0,dp(44),1));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(44),1);lp.leftMargin=dp(8);actions.addView(button("拒绝",false,()->command(Wire.obj("op","group.approve","group",groupId,"target",user,"contact",contact,"enabled",false))),lp);c.addView(actions);}
+        }
+        if(found+joins==0)empty(body,"暂无新的通知","好友邀请与群组申请，都会出现在这里。");
     }
     private void addFriend(){
         List<JSONObject> candidates=new ArrayList<>();for(JSONObject u:workspace.users.values())if(u.optInt("id")!=workspace.viewer)candidates.add(u);
         if(candidates.isEmpty()){toast("当前服务器还没有其他用户");return;}String[] names=new String[candidates.size()];for(int i=0;i<names.length;i++)names[i]=candidates.get(i).optString("name")+"  ·  ID "+candidates.get(i).optInt("id");
         new AlertDialog.Builder(this).setTitle("添加云端用户").setItems(names,(d,w)->{JSONObject u=candidates.get(w);JSONArray accounts=u.optJSONArray("services");List<Integer> types=new ArrayList<>();List<String> labels=new ArrayList<>();if(accounts!=null)for(int i=0;i<accounts.length();i++){JSONObject s=accounts.optJSONObject(i);int t=s==null?-1:s.optInt("type",-1);if(t>=0&&t<3){types.add(t);labels.add(SERVICES[t]+" · "+s.optString("nick"));}}new AlertDialog.Builder(this).setTitle("选择对方的服务").setItems(labels.toArray(new String[0]),(d2,w2)->askText("好友申请","写一句验证信息","你好，我是 "+workspace.name(workspace.viewer),reason->command(Wire.obj("op","friend.request","target",u.optInt("id"),"contact",types.get(w2),"reason",reason)))).show();}).show();
     }
-    private void requests(){LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);JSONArray list=workspace.array("requests");int found=0;
-        for(int i=0;i<list.length();i++){JSONObject r=list.optJSONObject(i);if(r==null||r.optInt("status",-1)!=0)continue;boolean incoming=r.optInt("to")==workspace.viewer&&r.optInt("destination")==service;boolean outgoing=r.optInt("from")==workspace.viewer&&r.optInt("source")==service;if(!incoming&&!outgoing)continue;found++;LinearLayout c=card(content);c.addView(text(workspace.name(r.optInt(incoming?"from":"to")),16,INK,true));c.addView(text(r.optString("reason"),13,MUTED,false));String id=r.optString("id");if(incoming){c.addView(button("接受",true,()->{command(Wire.obj("op","friend.respond","message",id,"enabled",true));toast("已提交，请关闭窗口查看同步结果");}));c.addView(button("拒绝",false,()->command(Wire.obj("op","friend.respond","message",id,"enabled",false))));}else c.addView(button("撤销申请",false,()->command(Wire.obj("op","friend.cancel","message",id))));}
-        if(found==0)content.addView(text("暂无待处理的好友申请",15,MUTED,false));ScrollView s=new ScrollView(this);s.addView(content);new AlertDialog.Builder(this).setTitle("好友申请").setView(s).setPositiveButton("关闭",null).show();}
     private void createGroup(){askText("创建群聊","输入群名称","",name->command(Wire.obj("op","group.create","name",name,"mode",service==1?1:0,"parent",0)));}
+
+    /** Tablet 会话 page: desktop ChatPageHsx conversation pane beside the chat pane. Returns the chat pane. */
+    private LinearLayout splitChats(){
+        LinearLayout panes=row();panes.setGravity(Gravity.TOP);root.addView(panes,new LinearLayout.LayoutParams(-1,-1));
+        LinearLayout list=column();list.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xfff6faff,0xffeff6ff}));list.setPadding(dp(12),dp(16),dp(12),dp(8));
+        LinearLayout head=row();head.setPadding(dp(4),0,0,0);head.addView(line("会话",19,INK,true),new LinearLayout.LayoutParams(0,-2,1));head.addView(bellAction());head.addView(iconAction("plus","查找 / 添加好友",()->go(FRIENDS)));list.addView(head);gap(list,10);
+        EditText search=searchBox(list,"搜索联系人或群聊");gap(list,10);ScrollView listScroll=new ScrollView(this);listScroll.setVerticalScrollBarEnabled(false);LinearLayout rows=column();listScroll.addView(rows);list.addView(listScroll,new LinearLayout.LayoutParams(-1,0,1));
+        TextView note=text("每一条消息，都是一次靠近",10,0xff9aacc3,false);note.setGravity(Gravity.CENTER);note.setPadding(0,dp(6),0,0);list.addView(note);
+        conversationPane=rows;fillConversations(rows,"");search.addTextChangedListener(watcher(q->fillConversations(rows,q)));
+        panes.addView(list,new LinearLayout.LayoutParams(dp(316),-1));View divider=new View(this);divider.setBackgroundColor(LINE);panes.addView(divider,new LinearLayout.LayoutParams(dp(1),-1));
+        LinearLayout chat=column();chat.setBackgroundColor(0xfff2f7fe);panes.addView(chat,new LinearLayout.LayoutParams(0,-1,1));scroll=listScroll;return chat;
+    }
+    private void emptyChat(LinearLayout chat){
+        LinearLayout c=column();c.setGravity(Gravity.CENTER);c.addView(icon("wave",0xff9ac5ee,72));gap(c,18);TextView title=text("心意，在这里相遇",24,0xff729ac3,false);title.setTypeface(Typeface.SERIF);title.setLetterSpacing(.08f);c.addView(title);gap(c,8);c.addView(text("不必匆忙，一句问候也很好。",12,0xffa2b4ca,false));
+        chat.addView(c,new LinearLayout.LayoutParams(-1,-1));
+    }
+    private void chatHeader(LinearLayout parent,View face,String title,String subtitle,boolean back,String actionLabel,Runnable action){
+        boolean pane=wide();LinearLayout h=row();if(pane){h.setPadding(dp(18),dp(12),dp(14),dp(12));h.setBackgroundColor(blog()?palette.surface:0xfff8fbff);}else h.setPadding(0,dp(2),0,dp(8));
+        if(back){FrameLayout b=iconAction("back","返回",this::closeChat);((LinearLayout.LayoutParams)b.getLayoutParams()).leftMargin=0;h.addView(b);}
+        LinearLayout.LayoutParams fs=new LinearLayout.LayoutParams(dp(44),dp(44));fs.leftMargin=back?dp(8):0;fs.rightMargin=dp(12);h.addView(face,fs);
+        LinearLayout labels=column();labels.addView(line(title,18,INK,true));labels.addView(line(subtitle,11,MUTED,false));h.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+        if(action!=null)h.addView(iconAction("info",actionLabel,action));parent.addView(h);
+        if(pane){View rule=new View(this);rule.setBackgroundColor(LINE);parent.addView(rule,new LinearLayout.LayoutParams(-1,dp(1)));}
+    }
+    private void messageArea(LinearLayout parent){
+        scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setVerticalScrollBarEnabled(false);chatMessages=column();boolean pane=wide();chatMessages.setPadding(pane?dp(18):dp(2),dp(12),pane?dp(18):dp(2),dp(12));scroll.addView(chatMessages);parent.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+    }
+    /** Desktop composer: emoji button, rounded input and a round send button. */
+    private void composer(LinearLayout parent,String hint){
+        LinearLayout frame=row();frame.setPadding(dp(6),dp(6),dp(6),dp(6));frame.setBackground(outline(palette.surface,20));
+        FrameLayout emoji=iconAction("smile","插入表情",()->{});emoji.setOnClickListener(this::emojiMenu);frame.addView(emoji,new LinearLayout.LayoutParams(dp(40),dp(40)));
+        composer=new EditText(this);composer.setHint(hint);composer.setTextSize(15);composer.setTextColor(INK);composer.setHintTextColor(MUTED);composer.setHighlightColor(palette.soft);composer.setBackground(bg(blog()?palette.soft:0xfff0f5fb,17));composer.setPadding(dp(14),dp(9),dp(14),dp(9));composer.setSingleLine(false);composer.setMaxLines(4);
+        composer.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);composer.setSaveEnabled(false);composer.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        LinearLayout.LayoutParams field=new LinearLayout.LayoutParams(0,-2,1);field.leftMargin=dp(4);field.rightMargin=dp(8);frame.addView(composer,field);
+        FrameLayout send=new FrameLayout(this);send.setContentDescription("发送消息");send.setBackground(UiKit.touch(GREEN,Color.WHITE,22,density()));send.addView(new UiKit.Icon(this,"send",palette.onAccent),new FrameLayout.LayoutParams(dp(21),dp(21),Gravity.CENTER));send.setOnClickListener(v->send());frame.addView(send,new LinearLayout.LayoutParams(dp(44),dp(44)));sendButton=send;
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);if(wide())lp.setMargins(dp(14),dp(8),dp(14),dp(12));else{lp.topMargin=dp(6);lp.bottomMargin=dp(4);}parent.addView(frame,lp);enableSend(online()&&!sending);
+    }
+    private void emojiMenu(View anchor){PopupMenu menu=new PopupMenu(this,anchor);for(String e:EMOJI)menu.getMenu().add(e);menu.setOnMenuItemClickListener(item->{if(composer!=null){composer.getText().insert(Math.max(0,composer.getSelectionStart()),item.getTitle());composer.requestFocus();}return true;});menu.show();}
+    private void enableSend(boolean on){if(sendButton!=null){sendButton.setEnabled(on);sendButton.setAlpha(on?1f:.45f);}}
+    private void closeChat(){hideKeyboard();boolean direct=chatKind==2;chatKind=-1;if(direct){tab=FEED;weiboInbox=true;}showHome();}
     private void openChat(int kind,int target){
-        chatKind=kind;chatTarget=target;sending=false;lastReadBatch="";base();String title=kind==0?workspace.display(target,service):workspace.groups.get(target).optString("name");top(title,kind==0?"私聊 · "+SERVICES[service]:"群聊 · "+SERVICES[service],"返回",()->{hideKeyboard();chatKind=-1;showHome();});status=text(connectionState,12,MUTED,false);root.addView(status);gap(root,8);
-        if(kind==1){root.addView(button("群公告、成员与入群申请",false,this::groupInfo));gap(root,8);}
-        scroll=new ScrollView(this);scroll.setFillViewport(true);chatMessages=column();chatMessages.setPadding(0,dp(8),0,dp(12));scroll.addView(chatMessages);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        LinearLayout compose=row();composer=input("说点什么…",false);composer.setSingleLine(false);composer.setMaxLines(4);composer.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);compose.addView(composer,new LinearLayout.LayoutParams(0,-2,1));sendButton=button("发送",true,this::send);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(68),dp(50));lp.leftMargin=dp(8);compose.addView(sendButton,lp);root.addView(compose);gap(root,4);renderMessages();}
+        JSONObject group=kind==1?workspace.groups.get(target):null;if(kind==1&&group==null){toast("群聊不存在或已解散");showHome();return;}
+        chatKind=kind;chatTarget=target;sending=false;lastReadBatch="";boolean split=wide();if(split)tab=CHATS;base(split);LinearLayout chat=split?splitChats():root;
+        String title,subtitle;View face;
+        if(kind==0){title=workspace.display(target,service);JSONObject u=workspace.users.get(target);String place=u==null?"":u.optString("location");subtitle=(u!=null&&u.optBoolean("online")?"在线":"离线")+" · 私聊 · "+SERVICES[service]+(place.isEmpty()||place.equals("未公开")?"":" · "+place);face=avatarUser(target,44);}
+        else{title=group.optString("name");JSONArray members=group.optJSONArray("members");String notice=group.optString("notice");subtitle=(members==null?0:members.length())+" 位成员 · 群聊 · "+SERVICES[service]+(notice.isEmpty()?"":" · "+notice);face=groupAvatar(target,title,44);}
+        chatHeader(chat,face,title,subtitle,!split,kind==1?"群资料":"会话资料",kind==1?this::groupInfo:this::contactInfo);
+        if(!split)connectionLabel();messageArea(chat);composer(chat,"输入消息…");renderMessages();
+    }
+    private int bubbleWidth(){int width=getResources().getConfiguration().screenWidthDp-(wide()?212+316+150:150);return dp(Math.max(160,Math.min(width,460)));}
+    private String daySeparator(LinearLayout parent,long created,String last){
+        Date date=new Date(created*1000);String day=new SimpleDateFormat("yyyyMMdd",Locale.ROOT).format(date);if(day.equals(last))return last;
+        String label=day.equals(new SimpleDateFormat("yyyyMMdd",Locale.ROOT).format(new Date()))?"今天":new SimpleDateFormat("yyyy年M月d日",Locale.CHINA).format(date);
+        TextView stamp=text(label,10,blog()?MUTED:0xff6b7f91,false);stamp.setLineSpacing(0,1);stamp.setPadding(dp(12),dp(4),dp(12),dp(4));stamp.setBackground(bg(0xbbffffff,8));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.gravity=Gravity.CENTER_HORIZONTAL;lp.topMargin=dp(4);lp.bottomMargin=dp(12);parent.addView(stamp,lp);return day;
+    }
+    private void note(LinearLayout parent,String value){TextView t=text(value,12,MUTED,false);t.setGravity(Gravity.CENTER);t.setPadding(0,dp(12),0,dp(12));parent.addView(t,new LinearLayout.LayoutParams(-1,-2));}
+    /** One desktop-style message: avatar beside the sender's chosen bubble, name and time underneath. */
+    private TextView messageRow(LinearLayout parent,int sender,boolean own,String value,long created,String extra,boolean recalled){
+        LinearLayout line=row();line.setGravity((own?Gravity.END:Gravity.START)|Gravity.TOP);int[] style=UiKit.bubble(recalled?"paper":appearance(sender).optString("bubble","jade"));
+        LinearLayout stack=column();stack.setGravity(own?Gravity.END:Gravity.START);TextView bubble=text(value,15,recalled?MUTED:style[2],false);bubble.setMaxWidth(bubbleWidth());bubble.setPadding(dp(14),dp(10),dp(14),dp(10));bubble.setBackground(UiKit.bubble(style,own,density()));bubble.setTextIsSelectable(!recalled);stack.addView(bubble);
+        TextView meta=text(workspace.name(sender)+"  "+time(created)+extra,10,MUTED,false);meta.setPadding(dp(4),dp(3),dp(4),0);stack.addView(meta);
+        View face=avatarUser(sender,36);LinearLayout.LayoutParams fs=new LinearLayout.LayoutParams(dp(36),dp(36));
+        if(own){fs.leftMargin=dp(8);line.addView(stack);line.addView(face,fs);}else{fs.rightMargin=dp(8);line.addView(face,fs);line.addView(stack);}
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(12);parent.addView(line,lp);return bubble;
+    }
     private void renderMessages(){
         if(workspace==null||chatKind<0||chatMessages==null)return;if(chatKind==2){renderDirectMessages();return;}List<JSONObject> all=workspace.history(service,chatKind,chatTarget);boolean nearBottom=scroll.getChildAt(0).getHeight()-scroll.getHeight()-scroll.getScrollY()<dp(100);chatMessages.removeAllViews();JSONArray unread=new JSONArray();
-        if(all.size()>300)chatMessages.addView(text("显示最近 300 条消息，完整记录仍保存在服务器",11,MUTED,false));
-        for(int i=Math.max(0,all.size()-300);i<all.size();i++){JSONObject m=all.get(i);boolean own=m.optInt("sender")==workspace.viewer;LinearLayout wrap=column();wrap.setGravity(own?Gravity.RIGHT:Gravity.LEFT);TextView name=text((own?"我":workspace.name(m.optInt("sender")))+" · "+clock(m.optLong("created")),11,MUTED,false);wrap.addView(name);gap(wrap,4);TextView bubble=text(m.optBoolean("recalled")?"消息已撤回":m.optString("text"),16,own?palette.onAccent:INK,false);bubble.setMaxWidth(dp(285));bubble.setPadding(dp(15),dp(11),dp(15),dp(11));bubble.setBackground(bg(own?GREEN:palette.surface,18));bubble.setTextIsSelectable(true);wrap.addView(bubble);gap(wrap,14);chatMessages.addView(wrap);bubble.setOnLongClickListener(v->{messageActions(m);return true;});if(!own&&!m.optBoolean("recalled")&&!Workspace.contains(m.optJSONArray("read"),workspace.viewer))unread.put(m.optString("id"));}
-        if(all.isEmpty()){TextView t=text("从这一句问候开始",13,MUTED,false);t.setGravity(Gravity.CENTER);chatMessages.addView(t);}
+        if(all.size()>300)note(chatMessages,"显示最近 300 条消息，完整记录仍保存在服务器");String day="";
+        for(int i=Math.max(0,all.size()-300);i<all.size();i++){JSONObject m=all.get(i);int sender=m.optInt("sender");boolean own=sender==workspace.viewer,recalled=m.optBoolean("recalled");day=daySeparator(chatMessages,m.optLong("created"),day);
+            String extra=(Workspace.contains(m.optJSONArray("stars"),workspace.viewer)?"  · 收藏":"")+(own&&chatKind==0&&!recalled?(Workspace.contains(m.optJSONArray("read"),chatTarget)?"  · 已读":"  · 未读"):"");
+            TextView bubble=messageRow(chatMessages,sender,own,recalled?"消息已撤回":m.optString("text"),m.optLong("created"),extra,recalled);bubble.setOnLongClickListener(v->{messageActions(m);return true;});
+            if(!own&&!recalled&&!Workspace.contains(m.optJSONArray("read"),workspace.viewer))unread.put(m.optString("id"));}
+        if(all.isEmpty())note(chatMessages,"还没有消息，发送第一句问候吧。");
         if(nearBottom||all.size()<5)scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));String batch=unread.toString();if(unread.length()>0&&!batch.equals(lastReadBatch)&&client!=null&&client.isOnline()){lastReadBatch=batch;command(Wire.obj("op","chat.read","messages",unread));}
     }
     private void send(){
         if(composer==null||sending)return;String value=composer.getText().toString();if(value.trim().isEmpty())return;int limit=chatKind==2?2000:5500;if(value.getBytes(StandardCharsets.UTF_8).length>limit){toast("内容过长，请缩短后再发送");return;}
-        sending=true;sendButton.setEnabled(false);EditText editor=composer;Button action=sendButton;JSONObject data=chatKind==2?Wire.obj("op","weibo.dm.send","target",chatTarget,"post",directPost,"text",value):Wire.obj("op","chat.send","kind",chatKind,"target",chatTarget,"text",value);
-        sendRequest=command(data,()->{if(editor.getText().toString().equals(value))editor.setText("");},()->{sending=false;if(action==sendButton)action.setEnabled(client!=null&&client.isOnline());});
+        sending=true;enableSend(false);EditText editor=composer;View action=sendButton;JSONObject data=chatKind==2?Wire.obj("op","weibo.dm.send","target",chatTarget,"post",directPost,"text",value):Wire.obj("op","chat.send","kind",chatKind,"target",chatTarget,"text",value);
+        sendRequest=command(data,()->{if(editor.getText().toString().equals(value))editor.setText("");},()->{sending=false;if(action==sendButton)enableSend(online());});
     }
     private void messageActions(JSONObject m){if(m.optBoolean("recalled"))return;List<String> actions=new ArrayList<>();actions.add("复制文字");actions.add(Workspace.contains(m.optJSONArray("stars"),workspace.viewer)?"取消收藏":"收藏消息");if(m.optInt("sender")==workspace.viewer)actions.add("撤回消息");new AlertDialog.Builder(this).setItems(actions.toArray(new String[0]),(d,w)->{if(w==0){((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("听澜消息",m.optString("text")));toast("已复制");}else if(w==1)command(Wire.obj("op","chat.star","message",m.optString("id"),"enabled",!Workspace.contains(m.optJSONArray("stars"),workspace.viewer)));else command(Wire.obj("op","chat.recall","message",m.optString("id")));}).show();}
+    /** Desktop 会话资料 panel as a dialog: location, service, remark, group and message statistics. */
+    private void contactInfo(){
+        int id=chatTarget;JSONObject u=workspace.users.get(id);String remark="",category="";JSONArray friends=workspace.account(workspace.viewer,service).optJSONArray("friends");
+        if(friends!=null)for(int i=0;i<friends.length();i++){JSONObject f=friends.optJSONObject(i);if(f!=null&&f.optInt("id")==id){remark=f.optString("remark");category=f.optString("category");}}
+        List<JSONObject> history=workspace.history(service,0,id);int stars=0;for(JSONObject m:history)if(Workspace.contains(m.optJSONArray("stars"),workspace.viewer))stars++;
+        new AlertDialog.Builder(this).setTitle(workspace.name(id)).setMessage("地区   "+(u==null?"未公开":u.optString("location","未公开"))+"\n服务   "+SERVICES[service]+"\n备注   "+(remark.isEmpty()?"未设置":remark)+"\n分组   "+(category.isEmpty()?"未分组":category)+"\n\n"+history.size()+" 条消息    ·    "+stars+" 条收藏").setPositiveButton("知道了",null).show();
+    }
     private void groupInfo(){
-        JSONObject group=workspace.groups.get(chatTarget);if(group==null)return;final int groupId=chatTarget;boolean manager=group.optInt("owner")==workspace.viewer||Workspace.contains(group.optJSONArray("admins"),workspace.viewer);
+        JSONObject group=workspace.groups.get(chatTarget);if(group==null)return;final int groupId=chatTarget;boolean manager=manages(group);
         LinearLayout content=column();content.setPadding(dp(20),dp(8),dp(20),0);content.addView(text(group.optString("name"),22,INK,true));content.addView(text("群号 "+groupId+"\n"+group.optString("notice","暂无公告"),14,MUTED,false));gap(content,16);
-        JSONArray members=group.optJSONArray("members");if(members!=null)for(int i=0;i<members.length();i++){JSONObject member=members.optJSONObject(i);if(member!=null)content.addView(text(workspace.name(member.optInt("id"))+(member.optInt("id")==group.optInt("owner")?" · 群主":""),15,INK,false));}
+        JSONArray members=group.optJSONArray("members");if(members!=null)for(int i=0;i<members.length();i++){JSONObject member=members.optJSONObject(i);if(member==null)continue;int id=member.optInt("id");LinearLayout r=row();r.setPadding(0,dp(5),0,dp(5));r.addView(avatarUser(id,34),new LinearLayout.LayoutParams(dp(34),dp(34)));TextView name=text(workspace.name(id)+(id==group.optInt("owner")?" · 群主":Workspace.contains(group.optJSONArray("admins"),id)?" · 管理员":""),15,INK,false);name.setPadding(dp(10),0,0,0);r.addView(name);content.addView(r);}
         if(manager){gap(content,16);content.addView(text("待处理的入群申请",14,MUTED,true));JSONArray pending=group.optJSONArray("pending");if(pending!=null)for(int i=0;i<pending.length();i++){JSONArray request=pending.optJSONArray(i);if(request==null)continue;int user=request.optInt(0),contact=request.optInt(1);LinearLayout row=card(content);row.addView(text(workspace.name(user),16,INK,true));row.addView(button("同意加入",true,()->command(Wire.obj("op","group.approve","group",groupId,"target",user,"contact",contact,"enabled",true))));row.addView(button("拒绝",false,()->command(Wire.obj("op","group.approve","group",groupId,"target",user,"contact",contact,"enabled",false))));}}
         ScrollView s=new ScrollView(this);s.addView(content);new AlertDialog.Builder(this).setTitle("群资料").setView(s).setPositiveButton("关闭",null).show();
     }
@@ -226,18 +446,18 @@ public final class MainActivity extends Activity {
         final boolean wb=channel.equals("weibo");
         if(service!=2){LinearLayout switches=row();switches.addView(button("朋友圈",!wb,()->{channel="moments";weiboInbox=false;showHome();}),new LinearLayout.LayoutParams(0,dp(43),1));LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,dp(43),1);right.leftMargin=dp(8);switches.addView(button("微博",wb,()->{channel="weibo";showHome();}),right);body.addView(switches);gap(body,14);}
         body.addView(artwork(wb,wb?218:176));gap(body,16);
-        if(wb){LinearLayout tabs=row();String[] labels={"广场","关注","我的"};for(int i=0;i<3;i++){final int filter=i;TextView chip=text(labels[i],14,weiboFilter==i?INK:MUTED,weiboFilter==i);chip.setGravity(Gravity.CENTER);chip.setBackground(UiKit.touch(weiboFilter==i?palette.soft:Color.TRANSPARENT,GREEN,13,getResources().getDisplayMetrics().density));tabs.addView(chip,new LinearLayout.LayoutParams(0,dp(39),1));chip.setOnClickListener(v->{weiboFilter=filter;weiboInbox=false;showHome();});}body.addView(tabs);gap(body,12);}
-        if(wb&&workspace.account(workspace.viewer,2).length()==0){empty("开启你的微博空间","先在「我的」开通微博服务，再与大家分享灵感。");return;}
+        if(wb){LinearLayout tabs=row();String[] labels={"广场","关注","我的"};for(int i=0;i<3;i++){final int filter=i;TextView chip=text(labels[i],14,weiboFilter==i?INK:MUTED,weiboFilter==i);chip.setGravity(Gravity.CENTER);chip.setBackground(UiKit.touch(weiboFilter==i?palette.soft:Color.TRANSPARENT,GREEN,13,density()));tabs.addView(chip,new LinearLayout.LayoutParams(0,dp(39),1));chip.setOnClickListener(v->{weiboFilter=filter;weiboInbox=false;showHome();});}body.addView(tabs);gap(body,12);}
+        if(wb&&workspace.account(workspace.viewer,2).length()==0){empty(body,"开启你的微博空间","先在「我的」开通微博服务，再与大家分享灵感。");return;}
         LinearLayout composerCard=card(body);LinearLayout compose=row();compose.addView(avatarUser(workspace.viewer,38),new LinearLayout.LayoutParams(dp(38),dp(38)));TextView prompt=text(wb?"此刻，有什么新灵感？":"记录今天的小事…",14,MUTED,false);prompt.setPadding(dp(12),0,0,0);compose.addView(prompt,new LinearLayout.LayoutParams(0,-2,1));compose.addView(button(wb?"发微博":"发布",true,()->askText(wb?"新的灵感":"发布动态","分享此刻的想法","",value->command(Wire.obj("op","feed.publish","channel",channel,"text",value)))));composerCard.addView(compose);
         JSONArray posts=workspace.array(wb?"weibo":"feed");int shown=0;for(int i=0;i<posts.length();i++){JSONObject post=posts.optJSONObject(i);if(post==null)continue;int author=post.optInt("author");boolean following=Workspace.contains(workspace.array("follows"),author);if(wb&&((weiboFilter==1&&!following)||(weiboFilter==2&&author!=workspace.viewer)))continue;shown++;postCard(post,wb);}
-        if(shown==0)empty(wb?(weiboFilter==1?"关注的灵感，正在路上":"让第一条灵感从你开始"):"这里还很安静",wb?"真实的公开动态会出现在这里。":"好友发布的生活片段会同步到这里。");
+        if(shown==0)empty(body,wb?(weiboFilter==1?"关注的灵感，正在路上":"让第一条灵感从你开始"):"这里还很安静",wb?"真实的公开动态会出现在这里。":"好友发布的生活片段会同步到这里。");
         if(wb){TextView note=text("伊冯灵感同人插画 · 非官方合作",10,MUTED,false);note.setGravity(Gravity.CENTER);body.addView(note);}
     }
     private void postCard(JSONObject post,boolean wb){
         int author=post.optInt("author");String id=post.optString("id");LinearLayout c=card(body);LinearLayout head=row();head.addView(avatarUser(author,42),new LinearLayout.LayoutParams(dp(42),dp(42)));LinearLayout who=column();who.setPadding(dp(11),0,dp(6),0);who.addView(text(workspace.name(author),15,INK,true));who.addView(text(clock(post.optLong("created"))+(wb?" · 公开":" · 朋友可见"),10,MUTED,false));head.addView(who,new LinearLayout.LayoutParams(0,-2,1));
         if(wb&&author!=workspace.viewer){boolean followed=Workspace.contains(workspace.array("follows"),author);Button follow=button(followed?"已关注":"＋ 关注",false,()->command(Wire.obj("op","weibo.follow","target",author,"enabled",!followed)));follow.setTextSize(11);follow.setMinHeight(dp(34));head.addView(follow,new LinearLayout.LayoutParams(-2,dp(35)));}c.addView(head);gap(c,15);TextView content=text(post.optString("text"),16,INK,false);content.setLineSpacing(dp(5),1);content.setTextIsSelectable(true);c.addView(content);
         String image=post.optString("image");if(!image.isEmpty()&&image.length()<180000)try{byte[] bytes=java.util.Base64.getDecoder().decode(image);BitmapFactory.Options options=new BitmapFactory.Options();options.inScaled=false;Bitmap bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);if(bitmap!=null){gap(c,13);ImageView view=new ImageView(this);view.setImageBitmap(bitmap);view.setScaleType(ImageView.ScaleType.CENTER_CROP);view.setBackground(bg(palette.soft,15));view.setClipToOutline(true);c.addView(view,new LinearLayout.LayoutParams(-1,dp(208)));}}catch(Exception ignored){}
-        gap(c,16);View line=new View(this);line.setBackgroundColor(LINE);c.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));gap(c,7);LinearLayout actions=row();actions.addView(postAction("heart",(post.optBoolean("liked")?"已赞 ":"赞 ")+post.optInt("likes"),post.optBoolean("liked"),()->command(Wire.obj("op","feed.like","post",id,"enabled",!post.optBoolean("liked")))),new LinearLayout.LayoutParams(0,dp(42),1));
+        gap(c,16);View rule=new View(this);rule.setBackgroundColor(LINE);c.addView(rule,new LinearLayout.LayoutParams(-1,dp(1)));gap(c,7);LinearLayout actions=row();actions.addView(postAction("heart",(post.optBoolean("liked")?"已赞 ":"赞 ")+post.optInt("likes"),post.optBoolean("liked"),()->command(Wire.obj("op","feed.like","post",id,"enabled",!post.optBoolean("liked")))),new LinearLayout.LayoutParams(0,dp(42),1));
         actions.addView(postAction("chat","评论",false,()->askText("回应这条灵感","写下你的回应","",value->command(Wire.obj("op","feed.comment","post",id,"text",value)))),new LinearLayout.LayoutParams(0,dp(42),1));
         if(wb&&author!=workspace.viewer)actions.addView(postAction("send","私信",false,()->openDirectMessage(author,id)),new LinearLayout.LayoutParams(0,dp(42),1));c.addView(actions);
         JSONArray comments=post.optJSONArray("comments");if(comments!=null&&comments.length()>0){LinearLayout replies=column();replies.setPadding(dp(12),dp(10),dp(12),dp(10));replies.setBackground(bg(BG,12));for(int j=0;j<comments.length();j++){JSONObject comment=comments.optJSONObject(j);if(comment!=null)replies.addView(text(workspace.name(comment.optInt("author"))+"："+comment.optString("text"),12,MUTED,false));}c.addView(replies);}
@@ -246,30 +466,41 @@ public final class MainActivity extends Activity {
     private void renderWeiboInbox(){
         LinearLayout intro=card(body);intro.addView(text("同频的人，会有回音。",20,INK,true));gap(intro,6);intro.addView(text("从公开微博发起对话，无需添加好友。",12,MUTED,false));
         Map<Integer,JSONObject> latest=new LinkedHashMap<>();JSONArray all=workspace.array("directMessages");for(int i=0;i<all.length();i++){JSONObject m=all.optJSONObject(i);if(m==null)continue;int peer=m.optInt("sender")==workspace.viewer?m.optInt("recipient"):m.optInt("sender");if(!latest.containsKey(peer))latest.put(peer,m);}
-        if(latest.isEmpty()){empty("还没有私信","在一条公开微博下点击「私信」，开启对话。");return;}
-        for(Map.Entry<Integer,JSONObject> entry:latest.entrySet()){int peer=entry.getKey();JSONObject m=entry.getValue();personRow(body,workspace.name(peer),m.optString("text"),false,!m.optBoolean("read")&&m.optInt("recipient")==workspace.viewer?"新私信":clock(m.optLong("created")),()->openDirectMessage(peer,""));}
+        if(latest.isEmpty()){empty(body,"还没有私信","在一条公开微博下点击「私信」，开启对话。");return;}
+        for(Map.Entry<Integer,JSONObject> entry:latest.entrySet()){int peer=entry.getKey();JSONObject m=entry.getValue();boolean fresh=!m.optBoolean("read")&&m.optInt("recipient")==workspace.viewer;listRow(body,avatarUser(peer,50),workspace.name(peer),when(m.optLong("created")),m.optString("text"),0,fresh?"新私信":"",false,()->openDirectMessage(peer,""));}
     }
     private void openDirectMessage(int target,String post){
-        chatKind=2;chatTarget=target;directPost=post;sending=false;lastReadBatch="";base();top(workspace.name(target),"微博私信 · 与此刻同频","返回",()->{hideKeyboard();chatKind=-1;tab=2;weiboInbox=true;showHome();});connectionLabel();scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);chatMessages=column();scroll.addView(chatMessages);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));LinearLayout compose=row();composer=input("发送一条私信…",false);composer.setSingleLine(false);composer.setMaxLines(4);compose.addView(composer,new LinearLayout.LayoutParams(0,-2,1));sendButton=button("发送",true,this::send);LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(dp(67),dp(49));size.leftMargin=dp(8);compose.addView(sendButton,size);root.addView(compose);renderDirectMessages();
+        chatKind=2;chatTarget=target;directPost=post;sending=false;lastReadBatch="";base();conversationPane=null;
+        chatHeader(root,avatarUser(target,44),workspace.name(target),"微博私信 · 与此刻同频",true,null,null);connectionLabel();messageArea(root);composer(root,"发送一条私信…");renderDirectMessages();
     }
     private void renderDirectMessages(){
         chatMessages.removeAllViews();List<JSONObject> list=new ArrayList<>();JSONArray all=workspace.array("directMessages");boolean unread=false;for(int i=all.length()-1;i>=0;i--){JSONObject m=all.optJSONObject(i);if(m!=null&&(m.optInt("sender")==chatTarget||m.optInt("recipient")==chatTarget)){list.add(m);if(m.optInt("recipient")==workspace.viewer&&!m.optBoolean("read"))unread=true;}}
-        for(JSONObject m:list){boolean own=m.optInt("sender")==workspace.viewer;LinearLayout wrap=column();wrap.setGravity(own?Gravity.RIGHT:Gravity.LEFT);wrap.addView(text((own?"我":workspace.name(chatTarget))+" · "+clock(m.optLong("created")),10,MUTED,false));gap(wrap,5);TextView bubble=text(m.optString("text"),16,own?palette.onAccent:INK,false);bubble.setMaxWidth(dp(400));bubble.setPadding(dp(15),dp(12),dp(15),dp(12));bubble.setBackground(bg(own?GREEN:palette.surface,18));wrap.addView(bubble);gap(wrap,15);chatMessages.addView(wrap);}
+        String day="";for(JSONObject m:list){int sender=m.optInt("sender");day=daySeparator(chatMessages,m.optLong("created"),day);messageRow(chatMessages,sender,sender==workspace.viewer,m.optString("text"),m.optLong("created"),"",false);}
+        if(list.isEmpty())note(chatMessages,"写下第一句问候，开启这段对话。");
         scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));String token=chatTarget+":"+list.size();if(unread&&!lastReadBatch.equals(token)){lastReadBatch=token;command(Wire.obj("op","weibo.dm.read","target",chatTarget));}
     }
     private void openWeiboService(){
-        LinearLayout form=column();form.setPadding(dp(22),dp(8),dp(22),0);form.addView(text("为当前账号设置微博服务密码，开通后可在同一云端切换。",13,MUTED,false));gap(form,12);EditText secret=input("至少 12 字节的微博密码",true);form.addView(secret);AlertDialog d=new AlertDialog.Builder(this).setTitle("开通微博服务").setView(form).setNegativeButton("取消",null).setPositiveButton("开通",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String password=secret.getText().toString();if(password.getBytes(StandardCharsets.UTF_8).length<12||password.getBytes(StandardCharsets.UTF_8).length>128){toast("密码需为 12–128 字节");return;}command(Wire.obj("op","account.open","contact",2,"number",String.valueOf(workspace.viewer),"password",password,"shared",false),()->{service=2;tab=2;channel="weibo";weiboInbox=false;showHome();},null);secret.setText("");d.dismiss();}));d.show();
+        LinearLayout form=column();form.setPadding(dp(22),dp(8),dp(22),0);form.addView(text("为当前账号设置微博服务密码，开通后可在同一云端切换。",13,MUTED,false));gap(form,12);EditText secret=input("至少 12 字节的微博密码",true);form.addView(secret);AlertDialog d=new AlertDialog.Builder(this).setTitle("开通微博服务").setView(form).setNegativeButton("取消",null).setPositiveButton("开通",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String password=secret.getText().toString();if(password.getBytes(StandardCharsets.UTF_8).length<12||password.getBytes(StandardCharsets.UTF_8).length>128){toast("密码需为 12–128 字节");return;}command(Wire.obj("op","account.open","contact",2,"number",String.valueOf(workspace.viewer),"password",password,"shared",false),()->{service=2;tab=FEED;channel="weibo";weiboInbox=false;showHome();},null);secret.setText("");d.dismiss();}));d.show();
     }
 
+    /** Desktop 账号 page: profile, opened services and settings. */
     private void mine(){
-        LinearLayout c=card(body);c.addView(text(workspace.name(workspace.viewer),27,INK,true));c.addView(text("云端 ID "+workspace.viewer+" · "+SERVICES[service],13,MUTED,false));gap(c,12);c.addView(text(workspace.users.get(workspace.viewer).optString("location","未设置"),14,MUTED,false));gap(c,16);c.addView(button("切换已开通服务",false,()->{List<Integer> types=new ArrayList<>();List<String> names=new ArrayList<>();for(int s=0;s<3;s++)if(workspace.account(workspace.viewer,s).length()>0){types.add(s);names.add(SERVICES[s]);}new AlertDialog.Builder(this).setTitle("切换服务视图").setItems(names.toArray(new String[0]),(d,w)->{service=types.get(w);tab=service==2?2:0;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;prefs.edit().putInt("service",service).apply();showHome();}).show();}));
+        JSONObject me=workspace.users.get(workspace.viewer);LinearLayout c=card(body);LinearLayout head=row();head.addView(avatarUser(workspace.viewer,64),new LinearLayout.LayoutParams(dp(64),dp(64)));
+        LinearLayout who=column();who.setPadding(dp(16),0,0,0);who.addView(line(workspace.name(workspace.viewer),23,INK,true));who.addView(line("云端 ID "+workspace.viewer+" · 当前 "+SERVICES[service],12,MUTED,false));who.addView(line(me.optString("location","未设置"),12,MUTED,false));head.addView(who,new LinearLayout.LayoutParams(0,-2,1));c.addView(head);
+        gap(c,16);c.addView(text("已开通的服务",13,MUTED,true));gap(c,8);JSONArray accounts=me.optJSONArray("services");
+        if(accounts!=null)for(int i=0;i<accounts.length();i++){JSONObject s=accounts.optJSONObject(i);int type=s==null?-1:s.optInt("type",-1);if(type<0||type>2)continue;boolean current=type==service;String bound=s.optString("bound","0");String relation=s.optBoolean("shared")?"与 QQ 共用":!bound.isEmpty()&&!bound.equals("0")?"绑定 "+bound:"独立账号";
+            LinearLayout entry=row();entry.setPadding(dp(12),dp(10),dp(12),dp(10));entry.setBackground(bg(current?palette.soft:BG,12));entry.addView(text(SERVICES[type],14,INK,true),new LinearLayout.LayoutParams(dp(54),-2));entry.addView(line(s.optString("number")+" · "+s.optString("nick"),12,MUTED,false),new LinearLayout.LayoutParams(0,-2,1));entry.addView(text(current?"使用中":relation,11,current?GREEN:MUTED,current));
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(6);c.addView(entry,lp);}
+        gap(c,8);c.addView(button("切换已开通服务",false,()->{List<Integer> types=new ArrayList<>();List<String> names=new ArrayList<>();for(int s=0;s<3;s++)if(workspace.account(workspace.viewer,s).length()>0){types.add(s);names.add(SERVICES[s]);}new AlertDialog.Builder(this).setTitle("切换服务视图").setItems(names.toArray(new String[0]),(d,w)->{service=types.get(w);tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;prefs.edit().putInt("service",service).apply();showHome();}).show();}));
         if(workspace.account(workspace.viewer,2).length()==0){body.addView(button("开通微博 · 伊冯灵感空间",true,this::openWeiboService));gap(body,12);}LinearLayout settings=card(body);settings.addView(button("编辑个人资料",false,()->askText("个人资料","昵称",workspace.name(workspace.viewer),name->askText("个人资料","所在地",workspace.users.get(workspace.viewer).optString("location"),location->command(Wire.obj("op","profile","name",name,"location",location))))));gap(settings,8);settings.addView(button("我的收藏",false,this::favorites));gap(settings,8);settings.addView(button("服务器与连接",false,()->new AlertDialog.Builder(this).setTitle("当前服务器").setMessage(profile.host+":"+profile.port+"\n\nTLS 1.2 / 1.3 · 严格校验证书\n\nCA SHA-256\n"+profile.fingerprint+"\n\n切换服务器请先退出登录。密码不会保存在手机存储中。").setPositiveButton("知道了",null).show()));
-        LinearLayout about=card(body);about.addView(text("听澜 Android 1.1.0",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端\n已支持好友、群聊、动态、收藏、微博关注与私信。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。\n同一账号当前只能在一台设备登录。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->logout()).show()));
+        LinearLayout about=card(body);about.addView(text("听澜 Android 1.2.0",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信；平板使用与电脑端相同的侧边栏和双栏会话。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。\n同一账号当前只能在一台设备登录。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->logout()).show()));
     }
     private void favorites(){LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);JSONArray list=workspace.array("messages");int count=0;for(int i=0;i<list.length();i++){JSONObject m=list.optJSONObject(i);if(m!=null&&!m.optBoolean("recalled")&&Workspace.contains(m.optJSONArray("stars"),workspace.viewer)){count++;LinearLayout c=card(content);c.addView(text(workspace.name(m.optInt("sender"))+" · "+clock(m.optLong("created")),12,MUTED,false));c.addView(text(m.optString("text"),16,INK,false));}}if(count==0)content.addView(text("长按聊天消息即可收藏",15,MUTED,false));ScrollView sc=new ScrollView(this);sc.addView(content);new AlertDialog.Builder(this).setTitle("我的收藏").setView(sc).setPositiveButton("关闭",null).show();}
-    private interface TextAction{void accept(String value);}
     private void askText(String title,String hint,String current,TextAction action){LinearLayout c=column();c.setPadding(dp(22),dp(12),dp(22),0);EditText e=input(hint,false);e.setText(current);e.setSingleLine(false);e.setMaxLines(5);e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);c.addView(e);AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(c).setNegativeButton("取消",null).setPositiveButton("提交",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String value=e.getText().toString().trim();if(value.isEmpty()){toast("请输入内容");return;}action.accept(value);d.dismiss();}));d.show();}
     private String clock(long seconds){if(seconds<=0)return "";return new SimpleDateFormat("MM-dd HH:mm",Locale.getDefault()).format(new Date(seconds*1000));}
+    private String time(long seconds){if(seconds<=0)return "";return new SimpleDateFormat("HH:mm",Locale.getDefault()).format(new Date(seconds*1000));}
+    /** Conversation list time: today shows the clock, older days show the date. */
+    private String when(long seconds){if(seconds<=0)return "";Date date=new Date(seconds*1000);boolean today=new SimpleDateFormat("yyyyMMdd",Locale.ROOT).format(date).equals(new SimpleDateFormat("yyyyMMdd",Locale.ROOT).format(new Date()));return new SimpleDateFormat(today?"HH:mm":"MM-dd",Locale.getDefault()).format(date);}
     private void hideKeyboard(){View view=getCurrentFocus();if(view!=null)((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(view.getWindowToken(),0);}
     private void toast(String detail){Toast.makeText(this,detail==null?"操作未完成":detail,Toast.LENGTH_LONG).show();}
 }

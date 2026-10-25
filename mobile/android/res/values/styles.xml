@@ -9,6 +9,12 @@
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">#F3F6F3</item>
     </style>
+    <style name="SkyTheme" parent="AppTheme">
+        <item name="android:colorAccent">#1689FF</item>
+        <item name="android:statusBarColor">#F5F9FF</item>
+        <item name="android:navigationBarColor">#F5F9FF</item>
+        <item name="android:windowBackground">#F5F9FF</item>
+    </style>
     <style name="YvonneTheme" parent="AppTheme">
         <item name="android:colorAccent">#D573A4</item>
         <item name="android:statusBarColor">#F6F0F7</item>
