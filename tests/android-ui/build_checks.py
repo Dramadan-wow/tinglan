@@ -11,7 +11,7 @@ def main():
         command=[]
         for value in args:
             if isinstance(value,Path):
-                try:value=value.resolve().relative_to(root).as_posix()
+                try:value=str(value.resolve().relative_to(root))
                 except ValueError:pass
             command.append(str(value))
         subprocess.run(command,cwd=root,env=env,check=True,timeout=180,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))

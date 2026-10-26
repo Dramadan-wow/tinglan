@@ -56,7 +56,8 @@ def main():
             command=[]
             for x in args:
                 if isinstance(x,Path):
-                    try: x=x.resolve().relative_to(ROOT).as_posix()
+                    # Native separators: Windows cannot start a program from a relative path written with '/'.
+                    try: x=str(x.resolve().relative_to(ROOT))
                     except ValueError: pass
                 command.append(str(x))
             subprocess.run(command,cwd=ROOT,env=env,stdout=stream,stderr=subprocess.STDOUT,check=True,timeout=timeout,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
