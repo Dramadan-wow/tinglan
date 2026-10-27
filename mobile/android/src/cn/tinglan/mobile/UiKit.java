@@ -89,7 +89,9 @@ final class UiKit {
             case "search":canvas.drawCircle(10,10,6,p);canvas.drawLine(15,15,21,21,p);break;
             case "scan":path.moveTo(3,8);path.lineTo(3,3);path.lineTo(8,3);path.moveTo(16,3);path.lineTo(21,3);path.lineTo(21,8);path.moveTo(21,16);path.lineTo(21,21);path.lineTo(16,21);path.moveTo(8,21);path.lineTo(3,21);path.lineTo(3,16);canvas.drawPath(path,p);canvas.drawLine(6,12,18,12,p);break;
             case "flame":path.moveTo(12,2.5f);path.cubicTo(14.5f,8,20,9,20,15);path.cubicTo(20,23,4,23,4,15);path.cubicTo(4,11,6.5f,9,8.5f,8);path.cubicTo(8,12,11,11.5f,12,2.5f);canvas.drawPath(path,p);canvas.drawCircle(9.5f,15.5f,.5f,p);canvas.drawCircle(14.5f,15.5f,.5f,p);break;
-            case "refresh":canvas.drawArc(new RectF(4,4,20,20),-40,290,false,p);path.moveTo(20,4);path.lineTo(20,10);path.lineTo(14,10);canvas.drawPath(path,p);break;
+            // The arrowhead sits on the arc's clockwise end, pointing along it.
+            case "refresh":canvas.drawArc(new RectF(4,4,20,20),30,280,false,p);path.moveTo(13.65f,6.18f);path.lineTo(17.14f,5.87f);path.lineTo(16.83f,2.38f);canvas.drawPath(path,p);break;
+            case "crown":path.moveTo(4,18);path.lineTo(3,7);path.lineTo(8.5f,11.5f);path.lineTo(12,5);path.lineTo(15.5f,11.5f);path.lineTo(21,7);path.lineTo(20,18);path.close();canvas.drawPath(path,p);canvas.drawLine(5,21,19,21,p);break;
             default:path.moveTo(3,13);path.cubicTo(6,5,10,5,12,12);path.cubicTo(15,20,18,20,21,11);canvas.drawPath(path,p);canvas.drawLine(5,19,19,5,p);break;
         }canvas.restore();
     }

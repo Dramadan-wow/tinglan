@@ -28,7 +28,8 @@ import java.util.*;
 /** Native Android client. Account authority and all mutations remain on the existing server. */
 public final class MainActivity extends Activity {
     // Pages follow the desktop sidebar: 会话, 好友, 群组, 通知, 朋友圈 and 账号. Weibo keeps FEED and MINE.
-    private static final int CHATS=0,FRIENDS=1,FEED=2,MINE=3,GROUPS=4,NOTICES=5;
+    private static final int CHATS=0,FRIENDS=1,FEED=2,MINE=3,GROUPS=4,NOTICES=5,MEMBER=6;
+    private int selectedTier=1;
     private static final String[] EMOJI={"😊","🎉","❤️","👍","🌷","🌙","✨","🌈"};
     private int BG,INK,GREEN,MUTED,LINE;
     private UiKit.Palette palette=UiKit.RIVER;
@@ -72,7 +73,7 @@ public final class MainActivity extends Activity {
         else if(chatKind>=0){int kind=chatKind,target=chatTarget;String draft=composer==null?"":composer.getText().toString();if(kind==2)openDirectMessage(target,directPost);else openChat(kind,target);if(composer!=null)composer.setText(draft);}
         else showHome();
     }
-    @Override public void onBackPressed(){if(chatKind>=0)closeChat();else if(workspace!=null&&service!=2&&tab!=CHATS)go(CHATS);else if(workspace!=null)new AlertDialog.Builder(this).setTitle("离开听澜？").setMessage("聊天记录保存在服务器，应用回到后台后可能暂停连接。").setPositiveButton("回到桌面",(d,w)->moveTaskToBack(true)).setNegativeButton("取消",null).show();else super.onBackPressed();}
+    @Override public void onBackPressed(){if(chatKind>=0)closeChat();else if(workspace!=null&&tab==MEMBER){chatKind=-1;tab=MINE;showHome();}else if(workspace!=null&&service!=2&&tab!=CHATS)go(CHATS);else if(workspace!=null)new AlertDialog.Builder(this).setTitle("离开听澜？").setMessage("聊天记录保存在服务器，应用回到后台后可能暂停连接。").setPositiveButton("回到桌面",(d,w)->moveTaskToBack(true)).setNegativeButton("取消",null).show();else super.onBackPressed();}
     private float density(){return getResources().getDisplayMetrics().density;}
     private int dp(float value){return (int)(value*density()+.5f);}
     private boolean wide(){return getResources().getConfiguration().screenWidthDp>=720;}
@@ -153,7 +154,7 @@ public final class MainActivity extends Activity {
     }
     private List<Nav> navEntries(boolean side){
         List<Nav> out=new ArrayList<>();
-        if(service==2){int current=tab==MINE?3:weiboInbox?2:weiboFilter==1?1:0;String[] labels=side?new String[]{"微博首页","我的关注","微博私信","我的空间"}:new String[]{"广场","关注","私信","我的"};String[] glyphs={"compass","heart","mail","person"};
+        if(service==2){int current=tab==MINE||tab==MEMBER?3:weiboInbox?2:weiboFilter==1?1:0;String[] labels=side?new String[]{"微博首页","我的关注","微博私信","我的空间"}:new String[]{"广场","关注","私信","我的"};String[] glyphs={"compass","heart","mail","person"};
             for(int i=0;i<4;i++){final int index=i;out.add(new Nav(labels[i],glyphs[i],0,current==i,side&&i==3?"频道与个人空间":null,()->{hideKeyboard();chatKind=-1;tab=index==3?MINE:FEED;channel="weibo";weiboInbox=index==2;weiboFilter=index==1?1:0;showHome();}));}
             return out;
         }
@@ -163,7 +164,7 @@ public final class MainActivity extends Activity {
         out.add(new Nav("群组","group",0,tab==GROUPS,null,()->go(GROUPS)));
         if(side)out.add(new Nav("通知","bell",notices,tab==NOTICES,null,()->go(NOTICES)));
         out.add(new Nav("朋友圈","compass",0,tab==FEED,side?"我的听澜":null,()->{channel="moments";go(FEED);}));
-        out.add(new Nav(side?"账号":"我的","person",0,tab==MINE,null,()->go(MINE)));
+        out.add(new Nav(side?"账号":"我的","person",0,tab==MINE||tab==MEMBER,null,()->go(MINE)));
         return out;
     }
     private void go(int page){hideKeyboard();chatKind=-1;tab=page;weiboInbox=false;showHome();}
@@ -258,6 +259,7 @@ public final class MainActivity extends Activity {
     private void command(JSONObject data){command(data,null,null);}
 
     private String[] heading(){
+        if(tab==MEMBER)return new String[]{"会员与充值","解锁更多气泡、头像框与小火人外观"};
         if(service==2)return tab==MINE?new String[]{"我的空间","个人资料与服务，在此从容打理"}:weiboInbox?new String[]{"微博私信","同频的人，会有回音"}:weiboFilter==1?new String[]{"我的关注","关注的灵感，正在路上"}:new String[]{"微博","发现 · 关注 · 与同频的人交换灵感"};
         switch(tab){
             case FRIENDS:return new String[]{"好友","与你相伴的人"};
@@ -274,6 +276,7 @@ public final class MainActivity extends Activity {
         if(!big){View me=avatarUser(workspace.viewer,40);me.setContentDescription("我的资料");me.setOnClickListener(v->{if(service==2){tab=MINE;showHome();}else go(MINE);});LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(dp(40),dp(40));size.rightMargin=dp(12);bar.addView(me,size);}
         LinearLayout labels=column();labels.addView(line(h[0],big?24:21,INK,true));labels.addView(line(h[1],big?12:11,MUTED,false));bar.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
         int actions=0;
+        if(tab==MEMBER){bar.addView(iconAction("back","返回我的",()->{tab=MINE;showHome();}));actions++;}
         if(service!=2&&tab==CHATS){bar.addView(iconAction("scan","扫一扫登录电脑",this::scan));actions++;}
         if(service!=2&&tab!=NOTICES){bar.addView(bellAction());actions++;}
         if(service!=2&&(tab==FRIENDS||tab==CHATS)){bar.addView(iconAction("plus","添加好友",this::addFriend));actions++;}
@@ -284,11 +287,11 @@ public final class MainActivity extends Activity {
     }
     private void showHome(){
         if(workspace==null){showLogin();return;}chatKind=-1;composer=null;sendButton=null;conversationPane=null;
-        if(service==2&&tab!=MINE)tab=FEED;
+        if(service==2&&tab!=MINE&&tab!=MEMBER)tab=FEED;
         boolean split=wide()&&service!=2&&tab==CHATS;base(split);
         if(split){emptyChat(splitChats());return;}
         pageHeader();if(!wide()){serviceStrip(root,false);gap(root,9);connectionLabel();}makeScroll();
-        if(tab==CHATS)conversations();else if(tab==FRIENDS)friends();else if(tab==GROUPS)groups();else if(tab==NOTICES)notices();
+        if(tab==CHATS)conversations();else if(tab==FRIENDS)friends();else if(tab==GROUPS)groups();else if(tab==NOTICES)notices();else if(tab==MEMBER)membership();
         else if(tab==FEED){if(weiboInbox&&channel.equals("weibo"))renderWeiboInbox();else feed();}else mine();
         if(!wide())navigation();
     }
@@ -605,6 +608,73 @@ public final class MainActivity extends Activity {
         LinearLayout form=column();form.setPadding(dp(22),dp(8),dp(22),0);form.addView(text("为当前账号设置微博服务密码，开通后可在同一云端切换。",13,MUTED,false));gap(form,12);EditText secret=input("至少 12 字节的微博密码",true);form.addView(secret);AlertDialog d=new AlertDialog.Builder(this).setTitle("开通微博服务").setView(form).setNegativeButton("取消",null).setPositiveButton("开通",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String password=secret.getText().toString();if(password.getBytes(StandardCharsets.UTF_8).length<12||password.getBytes(StandardCharsets.UTF_8).length>128){toast("密码需为 12–128 字节");return;}command(Wire.obj("op","account.open","contact",2,"number",String.valueOf(workspace.viewer),"password",password,"shared",false),()->{service=2;tab=FEED;channel="weibo";weiboInbox=false;showHome();},null);secret.setText("");d.dismiss();}));d.show();
     }
 
+    /** Plans of desktop StudioStoreHsx::plan; the server checks tier, price and duration again. */
+    private static final String[] PLAN_NAMES={"免费用户","星芽","月汐","星河","云境"};
+    private static final int[] PLAN_PRICES={0,1,6,128,648},PLAN_DAYS={0,7,30,365,0};
+    private static final String[] PLAN_PERKS={"","8 款气泡 · 青芽头像框 · 薄荷精灵小火人","11 款气泡 · 月汐头像框 · 樱粉小火人","13 款气泡 · 极光动效 · 星焰精灵与星河王冠","15 款全部气泡 · 鎏金动效 · 鎏金守护者"};
+    private static final int STORAGE=12;
+    private String membershipText(){
+        JSONObject m=workspace.raw.optJSONObject("membership");int tier=m==null?0:Math.max(0,Math.min(4,m.optInt("tier")));if(tier==0)return "免费用户";
+        long until=m.optLong("expires");return PLAN_NAMES[tier]+"会员 · "+(tier==4||until<=0?"永久权益":new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT).format(new Date(until*1000))+" 到期");
+    }
+    /** 会员与充值, as on the desktop: choose a plan, pay with the WeChat code, submit the payment reference, follow the order. */
+    private void membership(){
+        final int tier=memberTier();if(selectedTier<Math.max(1,tier))selectedTier=Math.max(1,tier);
+        LinearLayout status=card(body);status.addView(text(membershipText(),18,INK,true));gap(status,4);status.addView(text(tier==0?"免费用户也可以更换主题、头像、背景并养成小火人。":"高档包含低档的全部装扮；同档续费与升级会保留剩余时长。",12,MUTED,false));
+        section(body,"选择档位",-1);
+        for(int t=1;t<=4;t++){
+            final int plan=t;boolean chosen=t==selectedTier,covered=tier==4||t<tier;
+            LinearLayout row=row();row.setPadding(dp(14),dp(12),dp(14),dp(12));row.setBackground(UiKit.touch(chosen?palette.soft:palette.surface,GREEN,16,density()));
+            LinearLayout labels=column();labels.addView(line(PLAN_NAMES[t]+(covered?" · 已拥有更高权益":""),15,covered?MUTED:INK,true));labels.addView(line(PLAN_PERKS[t],11,MUTED,false));row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+            LinearLayout price=column();price.setGravity(Gravity.END);price.addView(text("¥"+PLAN_PRICES[t],18,chosen?GREEN:INK,true));price.addView(text(t==4?"永久":PLAN_DAYS[t]+" 天",11,MUTED,false));row.addView(price);
+            row.setContentDescription(PLAN_NAMES[t]+"，"+PLAN_PRICES[t]+" 元，"+(t==4?"永久":PLAN_DAYS[t]+" 天")+(chosen?"，已选择":""));
+            row.setOnClickListener(v->{if(tier==4||plan<tier){toast("当前权益已覆盖该档位");return;}selectedTier=plan;int y=scroll.getScrollY();showHome();scroll.post(()->scroll.scrollTo(0,y));});
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(8);body.addView(row,lp);
+        }
+        LinearLayout pay=card(body);pay.addView(text("微信扫码 · 管理员核验开通",16,INK,true));gap(pay,4);pay.addView(text("应付 ¥"+PLAN_PRICES[selectedTier]+" · "+PLAN_NAMES[selectedTier]+(selectedTier==4?" · 永久":" · "+PLAN_DAYS[selectedTier]+" 天"),14,GREEN,true));gap(pay,10);
+        // The real code is copied in at build time from the maintainer's own assets and never kept in Git.
+        final int qr=getResources().getIdentifier("payment_qr","drawable",getPackageName());
+        if(qr!=0){
+            ImageView image=new ImageView(this);image.setImageResource(qr);image.setAdjustViewBounds(true);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setContentDescription("微信收款码，长按保存到相册");image.setOnLongClickListener(v->{savePaymentQr(qr);return true;});
+            pay.addView(image,new LinearLayout.LayoutParams(-1,dp(320)));gap(pay,8);pay.addView(button("保存收款码到相册",false,()->savePaymentQr(qr)),new LinearLayout.LayoutParams(-1,dp(44)));gap(pay,8);
+            pay.addView(text("保存后打开微信「扫一扫」，点右上角相册选择这张图片付款。请核对收款人与金额，并在备注里写上你的登录昵称。",12,MUTED,false));
+        }else pay.addView(text("此安装包没有内置收款码，请向服务器维护者获取付款方式，或在电脑端「装扮与会员」页扫码付款。",12,MUTED,false));
+        gap(pay,12);EditText reference=input("交易单号后 6 位 / 付款昵称与时间（至少 6 字）",false);reference.setSingleLine(true);pay.addView(reference,new LinearLayout.LayoutParams(-1,dp(52)));gap(pay,10);
+        pay.addView(button("我已付款，提交核验",true,()->{
+            String value=reference.getText().toString().trim();if(value.length()<6||value.length()>120){toast("请填写 6–120 字的交易单号或付款备注");return;}
+            if(tier==4||selectedTier<tier){toast("当前权益已覆盖该档位，请选择同档续期或更高档位");return;}
+            command(Wire.obj("op","membership.order","tier",selectedTier,"reference",value),()->{reference.setText("");toast("订单已提交，请等待管理员核验到账");},null);
+        }),new LinearLayout.LayoutParams(-1,dp(48)));
+        gap(pay,8);pay.addView(text("此页面不会自动扣款，也不会自动识别支付结果。付款后提交凭证，管理员核验到账后开通。",11,MUTED,false));
+        JSONArray orders=workspace.array("membershipOrders");section(body,"我的订单",orders.length());
+        if(orders.length()==0)empty(body,"还没有订单","提交付款凭证后，核验结果与原因会显示在这里。");
+        for(int i=0;i<orders.length();i++){
+            JSONObject o=orders.optJSONObject(i);if(o==null)continue;final String id=o.optString("id");String state=o.optString("status");int t=Math.max(0,Math.min(4,o.optInt("tier")));
+            LinearLayout c=card(body);LinearLayout head=row();head.addView(line(PLAN_NAMES[t]+" · ¥"+o.optInt("price"),15,INK,true),new LinearLayout.LayoutParams(0,-2,1));
+            head.addView(pill(state.equals("pending")?"待管理员核验":state.equals("approved")?"已核验开通":state.equals("rejected")?"已驳回":"已取消",state.equals("approved")?palette.soft:BG,state.equals("approved")?GREEN:MUTED));c.addView(head);
+            c.addView(text("提交于 "+clock(o.optLong("created"))+" · 订单 "+id.substring(0,Math.min(8,id.length())),11,MUTED,false));
+            if(!o.optString("note").isEmpty())c.addView(text("核验备注："+o.optString("note"),12,INK,false));
+            if(state.equals("pending")){gap(c,8);c.addView(button("取消申请",false,()->new AlertDialog.Builder(this).setTitle("取消这笔开通申请？").setMessage("取消只撤销开通申请；若已转账，请联系收款人处理款项。").setNegativeButton("保留",null).setPositiveButton("取消申请",(d,w)->command(Wire.obj("op","membership.cancel","id",id),()->toast("开通申请已取消"),null)).show()),new LinearLayout.LayoutParams(-1,dp(42)));}
+        }
+        gap(body,6);TextView rules=text("权益规则：高档包含低档装扮；同档续费与升级保留剩余时长，云境为永久。到期后自动使用免费气泡和默认头像框，头像与背景继续保留。订单在处理前可取消。",11,MUTED,false);body.addView(rules);
+    }
+    /** Saves the bundled payment code to the gallery so WeChat can read it from 相册. */
+    private void savePaymentQr(int id){
+        if(android.os.Build.VERSION.SDK_INT<29&&checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},STORAGE);return;}
+        try{
+            Bitmap bitmap=BitmapFactory.decodeResource(getResources(),id);android.content.ContentValues values=new android.content.ContentValues();
+            values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,"听澜收款码.jpg");values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/jpeg");
+            if(android.os.Build.VERSION.SDK_INT>=29)values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,"Pictures/Tinglan");
+            android.net.Uri uri=getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new IllegalStateException("相册不可用");
+            try(java.io.OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null||!bitmap.compress(Bitmap.CompressFormat.JPEG,95,out))throw new IllegalStateException("写入失败");}
+            toast("收款码已保存到相册，可在微信扫一扫中从相册选择");
+        }catch(Exception e){toast("保存失败："+e.getMessage());}
+    }
+    @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
+        super.onRequestPermissionsResult(code,permissions,results);
+        if(code!=STORAGE)return;int qr=getResources().getIdentifier("payment_qr","drawable",getPackageName());
+        if(results.length>0&&results[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&qr!=0)savePaymentQr(qr);else toast("需要存储权限才能保存收款码，也可以直接截屏");
+    }
     /** Desktop 账号 page: profile, opened services and settings. */
     private void mine(){
         JSONObject me=workspace.users.get(workspace.viewer);LinearLayout c=card(body);LinearLayout head=row();head.addView(avatarUser(workspace.viewer,64),new LinearLayout.LayoutParams(dp(64),dp(64)));
@@ -616,9 +686,10 @@ public final class MainActivity extends Activity {
         gap(c,8);c.addView(button("切换已开通服务",false,()->{List<Integer> types=new ArrayList<>();List<String> names=new ArrayList<>();for(int s=0;s<3;s++)if(workspace.account(workspace.viewer,s).length()>0){types.add(s);names.add(SERVICES[s]);}new AlertDialog.Builder(this).setTitle("切换服务视图").setItems(names.toArray(new String[0]),(d,w)->{service=types.get(w);tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;prefs.edit().putInt("service",service).apply();showHome();}).show();}));
         if(workspace.account(workspace.viewer,2).length()==0){body.addView(button("开通微博 · 伊冯灵感空间",true,this::openWeiboService));gap(body,12);}
         LinearLayout tools=row();tools.addView(tile("scan","扫一扫","扫码登录电脑端",this::scan),new LinearLayout.LayoutParams(0,-2,1));LinearLayout.LayoutParams second=new LinearLayout.LayoutParams(0,-2,1);second.leftMargin=dp(8);
-        tools.addView(tile("flame","小火人衣橱","和好友一起换装",this::chooseWardrobe),second);body.addView(tools);gap(body,12);
+        tools.addView(tile("flame","小火人衣橱","和好友一起换装",this::chooseWardrobe),second);body.addView(tools);gap(body,8);
+        body.addView(tile("crown","会员与充值",membershipText()+" · 开通或续费",()->{chatKind=-1;tab=MEMBER;showHome();}));gap(body,12);
         LinearLayout settings=card(body);settings.addView(button("编辑个人资料",false,()->askText("个人资料","昵称",workspace.name(workspace.viewer),name->askText("个人资料","所在地",workspace.users.get(workspace.viewer).optString("location"),location->command(Wire.obj("op","profile","name",name,"location",location))))));gap(settings,8);settings.addView(button("我的收藏",false,this::favorites));gap(settings,8);settings.addView(button("服务器与连接",false,()->new AlertDialog.Builder(this).setTitle("当前服务器").setMessage(profile.host+":"+profile.port+"\n\nTLS 1.2 / 1.3 · 严格校验证书\n\nCA SHA-256\n"+profile.fingerprint+"\n\n切换服务器请先退出登录。密码不会保存在手机存储中；自动登录只保存可吊销的登录凭证。").setPositiveButton("知道了",null).show()));
-        LinearLayout about=card(body);about.addView(text("听澜 Android 1.3.0",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信、聊天小火人与衣橱；平板使用与电脑端相同的侧边栏和双栏会话。\n电脑和手机可以同时登录；同一账号在另一部手机登录时，本机会自动下线。可用「扫一扫」登录电脑端。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留。退出后本机的自动登录失效，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->signOut()).show()));
+        LinearLayout about=card(body);about.addView(text("听澜 Android 1.3.1",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信、聊天小火人与衣橱；平板使用与电脑端相同的侧边栏和双栏会话。\n电脑和手机可以同时登录；同一账号在另一部手机登录时，本机会自动下线。可用「扫一扫」登录电脑端。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留。退出后本机的自动登录失效，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->signOut()).show()));
     }
     private void favorites(){LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);JSONArray list=workspace.array("messages");int count=0;for(int i=0;i<list.length();i++){JSONObject m=list.optJSONObject(i);if(m!=null&&!m.optBoolean("recalled")&&Workspace.contains(m.optJSONArray("stars"),workspace.viewer)){count++;LinearLayout c=card(content);c.addView(text(workspace.name(m.optInt("sender"))+" · "+clock(m.optLong("created")),12,MUTED,false));c.addView(text(m.optString("text"),16,INK,false));}}if(count==0)content.addView(text("长按聊天消息即可收藏",15,MUTED,false));ScrollView sc=new ScrollView(this);sc.addView(content);new AlertDialog.Builder(this).setTitle("我的收藏").setView(sc).setPositiveButton("关闭",null).show();}
     private void askText(String title,String hint,String current,TextAction action){LinearLayout c=column();c.setPadding(dp(22),dp(12),dp(22),0);EditText e=input(hint,false);e.setText(current);e.setSingleLine(false);e.setMaxLines(5);e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);c.addView(e);AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(c).setNegativeButton("取消",null).setPositiveButton("提交",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String value=e.getText().toString().trim();if(value.isEmpty()){toast("请输入内容");return;}action.accept(value);d.dismiss();}));d.show();}

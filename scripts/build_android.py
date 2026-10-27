@@ -39,12 +39,16 @@ def main():
     classes=stage/'classes'; classes.mkdir(exist_ok=True)
     generated=stage/'generated'; generated.mkdir(exist_ok=True)
     dex=stage/'dex'; dex.mkdir(exist_ok=True)
-    # Stage only reviewed resource definitions and the two original public artworks.
-    # Never copy payment images, connection profiles or application data.
+    # Stage only reviewed resource definitions, the two original public artworks and, like the desktop
+    # build, the maintainer's own WeChat payment code when it exists locally (it is never kept in Git).
+    # Never copy connection profiles or application data.
     resources=stage/'resources'
     shutil.copytree(source/'res',resources,dirs_exist_ok=True)
     for original,target in [('yvonne-social.png','yvonne_social.png'),('mist-river-v3.png','mist_river.png')]:
         shutil.copy2(ROOT/'assets/art'/original,resources/'drawable'/target)
+    for stale in (resources/'drawable').glob('payment_qr.*'):stale.unlink()
+    payment=ROOT/'assets/payment/wechat-receive.jpg'
+    if payment.exists():shutil.copy2(payment,resources/'drawable'/'payment_qr.jpg')
     env={k.upper():v for k,v in os.environ.items()}
     env['JAVA_HOME']=str(java);env['PATH']=str(java/'bin')+os.pathsep+env.get('PATH','')
     env['TINGLAN_SIGNING_PASSWORD']=a.storepass_file.read_text(encoding='utf-8').strip()
