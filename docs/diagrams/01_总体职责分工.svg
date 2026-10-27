@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480">
+<rect width="100%" height="100%" fill="white"/>
+<rect x="30" y="50" width="330" height="230" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="30" y="50" width="330" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="132.5" y="83.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" font-weight="700" fill="#203346">界面与会话</text>
+<text x="47.0" y="136.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">Console 与 Screen</text>
+<text x="47.0" y="170.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">Qt 页面与 AppSession</text>
+<text x="47.0" y="204.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">接收输入  展示状态</text>
+<rect x="435" y="50" width="330" height="230" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="435" y="50" width="330" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="537.5" y="83.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" font-weight="700" fill="#203346">业务管理器</text>
+<text x="452.0" y="136.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">Account / Friend</text>
+<text x="452.0" y="170.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">Group / Message</text>
+<text x="452.0" y="204.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">校验权限  执行业务</text>
+<rect x="840" y="50" width="330" height="230" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="840" y="50" width="330" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="942.5" y="83.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" font-weight="700" fill="#203346">数据与保存</text>
+<text x="857.0" y="136.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">DataStore 拥有对象</text>
+<text x="857.0" y="170.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">Storage 读写本机文件</text>
+<text x="857.0" y="204.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">中心后端保存 SQLite</text>
+<polyline points="360.0,165.0 435.0,165.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="435.0,165.0 422.0,171.0 422.0,159.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<polyline points="765.0,165.0 840.0,165.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="840.0,165.0 827.0,171.0 827.0,159.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<rect x="80" y="350" width="1040" height="85" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="261.2" y="395.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" font-weight="400" fill="#203346">课程核心先讲类与规则   Qt 和中心网络作为扩展说明</text>
+</svg>

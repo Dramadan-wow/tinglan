@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="790" viewBox="0 0 1200 790">
+<rect width="100%" height="100%" fill="white"/>
+<rect x="20" y="40" width="465" height="215" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="20" y="40" width="465" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="144.5" y="73.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" font-weight="700" fill="#203346">GroupHsx  抽象群</text>
+<text x="37.0" y="126.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">id_  owner_  members_</text>
+<text x="37.0" y="160.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">admins_  公告与禁言</text>
+<text x="37.0" y="194.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">policy_ 指向当前规则</text>
+<rect x="715" y="40" width="465" height="215" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="715" y="40" width="465" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="795.5" y="72.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="700" fill="#203346">GroupPolicyHsx  抽象策略</text>
+<text x="732.0" y="126.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">applications()  允许申请</text>
+<text x="732.0" y="160.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">subgroups()  允许讨论组</text>
+<text x="732.0" y="194.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">administrators()  管理员权限</text>
+<polyline points="485.0,145.0 715.0,145.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="485.0,145.0 497.0,152.0 509.0,145.0 497.0,138.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="518.5" y="121.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="400" fill="#203346">1 拥有 1 个策略</text>
+<rect x="20" y="415" width="230" height="100" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="20" y="415" width="230" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="57.5" y="446.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="700" fill="#203346">QQGroupHsx</text>
+<polyline points="135.0,415.0 135.0,330.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<rect x="270" y="415" width="230" height="100" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="270" y="415" width="230" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="280.5" y="446.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="700" fill="#203346">WeChatGroupHsx</text>
+<polyline points="385.0,415.0 385.0,330.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polyline points="135.0,330.0 385.0,330.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polyline points="252.0,330.0 252.0,255.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="252.0,255.0 262.0,274.0 242.0,274.0" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="690" y="415" width="240" height="145" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="690" y="415" width="240" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="738.0" y="445.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#203346">QQPolicyHsx</text>
+<text x="707.0" y="501.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">三项规则均为 true</text>
+<polyline points="810.0,415.0 810.0,330.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<rect x="945" y="415" width="240" height="145" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="945" y="415" width="240" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="967.5" y="445.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#203346">WeChatPolicyHsx</text>
+<text x="962.0" y="501.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">三项规则均为 false</text>
+<polyline points="1065.0,415.0 1065.0,330.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polyline points="810.0,330.0 1065.0,330.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polyline points="947.0,330.0 947.0,255.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="947.0,255.0 957.0,274.0 937.0,274.0" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="75" y="635" width="1050" height="100" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="271.0" y="678.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" font-weight="400" fill="#203346">GroupManagerHsx::mode   校验群主 → 替换 policy_</text>
+<text x="345.5" y="718.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="400" fill="#203346">群号 成员表 管理员配置和消息历史继续保留</text>
+</svg>

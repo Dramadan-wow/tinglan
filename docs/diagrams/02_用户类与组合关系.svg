@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+<rect width="100%" height="100%" fill="white"/>
+<rect x="355" y="20" width="490" height="135" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="355" y="20" width="490" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="513.0" y="53.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" font-weight="700" fill="#203346">DataStoreHsx</text>
+<text x="372.0" y="106.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">users_ 拥有用户对象</text>
+<rect x="55" y="240" width="530" height="205" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="55" y="240" width="530" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="210.2" y="273.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" font-weight="700" fill="#203346">UserHsx  抽象基类</text>
+<text x="72.0" y="326.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">id_  name_  日期与在线状态</text>
+<text x="72.0" y="360.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">typeName()  sharesQQ()</text>
+<text x="72.0" y="394.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">services_ 保存各项服务</text>
+<rect x="740" y="240" width="410" height="205" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="740" y="240" width="410" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="824.5" y="273.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" font-weight="700" fill="#203346">ServiceAccountHsx</text>
+<text x="757.0" y="326.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">type_  number_  凭据</text>
+<text x="757.0" y="360.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">friends_  blocked_</text>
+<text x="757.0" y="394.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">verify() 校验密码</text>
+<polyline points="600.0,155.0 600.0,195.0 320.0,195.0 320.0,240.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="600.0,155.0 593.0,167.0 600.0,179.0 607.0,167.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="350.0" y="185.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="400" fill="#203346">1 拥有 0..* 用户</text>
+<polyline points="585.0,335.0 740.0,335.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="585.0,335.0 597.0,342.0 609.0,335.0 597.0,328.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="614.0" y="310.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">services_</text>
+<text x="619.0" y="369.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">1 → 0..*</text>
+<rect x="20" y="580" width="260" height="95" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="20" y="580" width="260" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="82.5" y="611.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="700" fill="#203346">QQUserHsx</text>
+<polyline points="150.0,580.0 150.0,515.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<rect x="310" y="580" width="260" height="95" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="310" y="580" width="260" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="345.5" y="611.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="700" fill="#203346">WeChatUserHsx</text>
+<polyline points="440.0,580.0 440.0,515.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<rect x="600" y="580" width="260" height="95" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="600" y="580" width="260" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="643.5" y="611.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="700" fill="#203346">WeiboUserHsx</text>
+<polyline points="730.0,580.0 730.0,515.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polyline points="150.0,515.0 730.0,515.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polyline points="320.0,515.0 320.0,445.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="320.0,445.0 330.0,464.0 310.0,464.0" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="905" y="580" width="275" height="95" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="905" y="580" width="275" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="981.8" y="612.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="700" fill="#203346">FriendHsx</text>
+<polyline points="945.0,445.0 945.0,505.0 1042.0,505.0 1042.0,580.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="945.0,445.0 938.0,457.0 945.0,469.0 952.0,457.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="1070.0" y="505.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="400" fill="#203346">friends_</text>
+<text x="262.8" y="727.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="400" fill="#203346">空心三角表示继承   实心菱形表示拥有   跨对象关系保存稳定 ID</text>
+</svg>

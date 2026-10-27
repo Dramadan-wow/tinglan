@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">
+<rect width="100%" height="100%" fill="white"/>
+<rect x="5" y="25" width="220" height="72" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="5" y="25" width="220" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="41.5" y="55.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#203346">ChatPageHsx</text>
+<polyline points="115.0,100.0 115.0,800.0" fill="none" stroke="#496778" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="245" y="25" width="220" height="72" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="245" y="25" width="220" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="269.5" y="55.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#203346">AppSessionHsx</text>
+<polyline points="355.0,100.0 355.0,800.0" fill="none" stroke="#496778" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="485" y="25" width="220" height="72" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="485" y="25" width="220" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="492.2" y="52.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" fill="#203346">MessageManagerHsx</text>
+<polyline points="595.0,100.0 595.0,800.0" fill="none" stroke="#496778" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="725" y="25" width="220" height="72" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="725" y="25" width="220" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="758.8" y="55.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#203346">DataStoreHsx</text>
+<polyline points="835.0,100.0 835.0,800.0" fill="none" stroke="#496778" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="965" y="25" width="220" height="72" fill="white" stroke="#496778" stroke-width="1.5"/>
+<rect x="965" y="25" width="220" height="49" fill="#EDF4F8" stroke="#496778" stroke-width="1.5"/>
+<text x="1011.0" y="55.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#203346">StorageHsx</text>
+<polyline points="1075.0,100.0 1075.0,800.0" fill="none" stroke="#496778" stroke-width="1.5" stroke-dasharray="8 6"/>
+<polyline points="115.0,170.0 355.0,170.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="355.0,170.0 342.0,176.0 342.0,164.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="135.0" y="156.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">command 发起操作</text>
+<polyline points="355.0,245.0 595.0,245.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="595.0,245.0 582.0,251.0 582.0,239.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="366.8" y="231.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">本机回调 sendPrivate</text>
+<polyline points="595.0,320.0 835.0,320.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="835.0,320.0 822.0,326.0 822.0,314.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="620.5" y="306.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">查询在线 好友 屏蔽</text>
+<polyline points="835.0,395.0 595.0,395.0" fill="none" stroke="#496778" stroke-width="1.5" stroke-dasharray="8 6"/>
+<polygon points="595.0,395.0 608.0,389.0 608.0,401.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="649.0" y="381.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">校验所需数据</text>
+<polyline points="595.0,470.0 835.0,470.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="835.0,470.0 822.0,476.0 822.0,464.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="618.5" y="456.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">创建消息 标记 dirty</text>
+<polyline points="355.0,545.0 1075.0,545.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="1075.0,545.0 1062.0,551.0 1062.0,539.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="633.8" y="531.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">业务完成后 save</text>
+<polyline points="1075.0,620.0 835.0,620.0" fill="none" stroke="#496778" stroke-width="1.5"/>
+<polygon points="835.0,620.0 848.0,614.0 848.0,626.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="852.8" y="606.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">读取状态 写临时文件</text>
+<polyline points="1075.0,695.0 355.0,695.0" fill="none" stroke="#496778" stroke-width="1.5" stroke-dasharray="8 6"/>
+<polygon points="355.0,695.0 368.0,689.0 368.0,701.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="638.0" y="681.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">保存结果与异常</text>
+<polyline points="355.0,770.0 115.0,770.0" fill="none" stroke="#496778" stroke-width="1.5" stroke-dasharray="8 6"/>
+<polygon points="115.0,770.0 128.0,764.0 128.0,776.0" fill="#496778" stroke="#496778" stroke-width="1.5"/>
+<text x="142.5" y="756.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="400" fill="#203346">changed 信号刷新</text>
+</svg>
