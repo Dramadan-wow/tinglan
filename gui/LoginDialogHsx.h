@@ -22,7 +22,7 @@ private:
     QComboBox *service_, *role_;
     QCheckBox* linked_;
     QLabel *error_, *title_, *intro_, *hint_, *userLabel_;
-    QPushButton *register_, *userRole_, *adminRole_;
+    QPushButton *register_, *userRole_, *adminRole_, *qrLogin_;
     QWidget* serviceBox_;
     QAction* reveal_;
 };

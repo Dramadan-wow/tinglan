@@ -48,7 +48,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            adb install dist/android/Tinglan-Android-1.2.0.apk
+            adb install dist/android/Tinglan-Android-1.3.0.apk
             adb install build-package/android-ui/ui-checks.apk
             adb shell am instrument -w cn.tinglan.mobile.tests/.UiChecks | tee build-package/android-ui/result.txt
             grep -q 'PASS .* native UI checks' build-package/android-ui/result.txt

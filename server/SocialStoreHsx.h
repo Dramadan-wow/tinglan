@@ -20,6 +20,7 @@ private:
     QJsonArray posts(int actor,const QString& channel) const;
     QJsonObject member(int actor) const;
     QJsonObject appearances() const;
+    QJsonObject buddies(int actor) const;
     QSqlDatabase db_;
     const DataStoreHsx& data_;
 };

@@ -83,6 +83,7 @@ MainWindowHsx::MainWindowHsx(AppSessionHsx& s,QWidget* parent):QMainWindow(paren
     connect(&s,&AppSessionHsx::failed,this,[this](const QString& message){statusBar()->showMessage(message,12000);QMessageBox::warning(this,"操作未完成",message);});connect(&s,&AppSessionHsx::succeeded,this,[this](const QString& message){statusBar()->showMessage(message,6000);});
     connect(chat_,&ChatPageHsx::openSection,this,&MainWindowHsx::navigate);
     connect(chat_,&ChatPageHsx::openStudio,this,[this]{navigate(7);});
+    connect(chat_,&ChatPageHsx::openWardrobe,this,[this](int friendId){studio_->showWardrobe(friendId);navigate(7);});
     auto* expiry=new QTimer(this);expiry->setInterval(60000);connect(expiry,&QTimer::timeout,this,[this]{refresh();});expiry->start();
     refresh();navigate(session_.service()==ServiceHsx::Weibo?8:0);
 }

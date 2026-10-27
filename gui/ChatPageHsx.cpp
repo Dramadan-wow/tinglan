@@ -85,6 +85,7 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     scroll_=new QScrollArea;scroll_->setWidgetResizable(true);scroll_->setFrameShape(QFrame::NoFrame);scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);content_=new ChatBackdropHsx;bubbles_=new QVBoxLayout(content_);bubbles_->setContentsMargins(16,20,16,20);bubbles_->setSpacing(13);scroll_->setWidget(content_);rl->addWidget(scroll_,1);
     // The fire buddy floats over the message area (a viewport child, so it does not scroll with the messages).
     buddy_=new FireBuddyHsx(scroll_->viewport(),FireBuddyHsx::Mode::Floating);buddy_->hide();
+    buddy_->onWardrobe([this]{if(target_&&kind_==MessageKindHsx::Private)emit openWardrobe(target_);});
     older_=new QPushButton("加载更早的消息");older_->setObjectName("quietButton");rl->addWidget(older_);
     auto* composerArea=new QWidget;auto* composerLayout=new QVBoxLayout(composerArea);composerLayout->setContentsMargins(14,9,14,10);composerLayout->setSpacing(6);
     auto* composerFrame=new QFrame;composerFrame->setObjectName("composerFrame");auto* bottom=new QHBoxLayout(composerFrame);bottom->setContentsMargins(9,8,9,8);bottom->setSpacing(5);
@@ -158,7 +159,7 @@ void ChatPageHsx::showHistory() {
     while(auto* item=bubbles_->takeAt(0)){if(item->widget())delete item->widget();delete item;}
     composer_->setEnabled(target_!=0);send_->setEnabled(target_!=0);mentions_->setVisible(target_&&kind_==MessageKindHsx::Group);older_->hide();refreshDetails();
     file_->setEnabled(target_&&kind_==MessageKindHsx::Private&&session_.files().available());file_->setToolTip(kind_==MessageKindHsx::Group?"群文件将在后续版本开放":session_.files().available()?"发送文件（支持断点续传）":"需要中心服务器启用 HTTPS 文件服务");
-    static_cast<ChatBackdropHsx*>(content_)->setBackground(session_.studio().media(session_.user(),"background"));buddy_->setVisible(target_&&kind_==MessageKindHsx::Private);if(target_&&kind_==MessageKindHsx::Private){buddy_->setState(session_.studio().streak(target_),StudioStoreHsx::item("pet",session_.studio().choice(session_.user(),"pet")));buddy_->setOutfit(StudioStoreHsx::item("outfit",session_.studio().choice(session_.user(),"outfit")));}
+    static_cast<ChatBackdropHsx*>(content_)->setBackground(session_.studio().media(session_.user(),"background"));buddy_->setVisible(target_&&kind_==MessageKindHsx::Private);if(target_&&kind_==MessageKindHsx::Private){const auto look=session_.studio().buddy(target_);buddy_->setState(session_.studio().streak(target_),StudioStoreHsx::item("pet",look["pet"].toString()));buddy_->setOutfit(StudioStoreHsx::item("outfit",look["outfit"].toString()));}
     if(!target_){
         title_->setText("山水有相逢");subtitle_->setText("选择一位好友，让故事从一句问候开始");
         auto* empty=new QWidget;auto* layout=new QVBoxLayout(empty);layout->setAlignment(Qt::AlignCenter);layout->setSpacing(18);

@@ -14,6 +14,7 @@ public:
     int target() const { return target_; }
 signals:
     void openStudio();
+    void openWardrobe(int friendId);
     void openSection(int page);
 protected:
     void resizeEvent(QResizeEvent* event) override;

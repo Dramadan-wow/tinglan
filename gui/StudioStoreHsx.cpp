@@ -121,6 +121,28 @@ void StudioStoreHsx::decideOrder(const QString& id,bool approve,const QString& n
         order["status"]=approve?"approved":"rejected";order["note"]=note.trimmed();order["reviewer"]=AppSessionHsx::q(session_.admins().name());order["reviewed"]=static_cast<double>(now);list[i]=order;next["orders"]=list;commit(next);return;
     }ensure(false,"订单不存在");
 }
+QJsonObject StudioStoreHsx::buddy(int other) const {
+    QJsonObject look{{"pet",catalog("pet").first().toObject()["id"]},{"outfit",catalog("outfit").first().toObject()["id"]}};
+    if(session_.remote()){
+        // The server already falls back when the friend who chose an item no longer holds its tier.
+        const auto shared=session_.social()["buddies"].toObject()[QString::number(other)].toObject();
+        for(const auto* kind:{"pet","outfit"})if(!item(kind,shared[kind].toString()).isEmpty())look[kind]=shared[kind];
+        return look;
+    }
+    const int user=session_.user();const auto key=QString("%1:%2").arg(std::min(user,other)).arg(std::max(user,other));
+    const auto stored=root_["buddies"].toObject()[key].toObject();
+    for(const QString kind:{"pet","outfit"}){const auto chosen=item(kind,stored[kind].toString());
+        if(!chosen.isEmpty()&&chosen["tier"].toInt()<=membership(stored[kind+"By"].toInt())["tier"].toInt())look[kind]=stored[kind];}
+    return look;
+}
+void StudioStoreHsx::setBuddy(int other,const QString& kind,const QString& value) {
+    const int user=actor();ensure(kind=="pet"||kind=="outfit","不支持的小火人装扮");const auto selected=item(kind,value);ensure(!selected.isEmpty(),"装扮不存在");
+    ensure(selected.value("tier").toInt()<=membership(user).value("tier").toInt(),"此装扮需开通对应会员后使用");
+    ensure(other!=user&&session_.data().account(user,session_.service()).friends().count(other),"只能和好友一起给小火人换装");
+    if(session_.remote()){ensure(session_.command("buddy.update",{{"target",other},{"profile",QJsonObject{{kind,value}}}}, {},kind=="pet"?"小火人换上了新皮肤，好友那边也同步了":"小火人换上了新衣服，好友那边也同步了"),"装扮未发送，请连接服务器后重试");return;}
+    auto next=root_;auto all=next["buddies"].toObject();const auto key=QString("%1:%2").arg(std::min(user,other)).arg(std::max(user,other));
+    auto pair=all[key].toObject();pair[kind]=value;pair[kind+"By"]=user;all[key]=pair;next["buddies"]=all;commit(next);
+}
 QJsonObject StudioStoreHsx::streak(int other) const {
     const int user=actor();QMap<QDate,int> days;const auto today=QDate::currentDate();
     for(const auto& entry:session_.data().messages()){const auto& m=entry.second;if(m.kind()!=MessageKindHsx::Private||m.recalled())continue;const bool outgoing=m.sender()==user&&m.target()==other&&m.source()==session_.service(),incoming=m.sender()==other&&m.target()==user&&m.destination()==session_.service();if(!outgoing&&!incoming)continue;const auto date=QDateTime::fromSecsSinceEpoch(m.created()).date();if(date<=today)days[date]|=outgoing?1:2;}

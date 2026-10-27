@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QJsonObject>
+#include <functional>
 class QTimer;
 namespace im {
 // The friendship flame. Card: a strip with status text (dress-up preview). Floating: hovers over the chat
@@ -11,7 +12,10 @@ public:
     explicit FireBuddyHsx(QWidget* parent=nullptr,Mode mode=Mode::Card);
     void setState(const QJsonObject& state,const QJsonObject& skin);
     void setOutfit(const QJsonObject& outfit);
+    // Floating mode: the right-click menu offers to dress the buddy shared with this friend.
+    void onWardrobe(std::function<void()> open){wardrobe_=std::move(open);}
 protected:
+    void contextMenuEvent(QContextMenuEvent*) override;
     void paintEvent(QPaintEvent*) override;
     void showEvent(QShowEvent*) override;
     void hideEvent(QHideEvent*) override;
@@ -32,5 +36,6 @@ private:
     QPoint pressed_,dragMargin_;
     QPoint margin_{18,12}; // gap between the floating buddy and its host's bottom-right corner
     bool dragging_=false;
+    std::function<void()> wardrobe_;
 };
 }

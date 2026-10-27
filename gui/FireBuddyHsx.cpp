@@ -1,5 +1,7 @@
 #include "FireBuddyHsx.h"
+#include <QContextMenuEvent>
 #include <QEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -9,7 +11,7 @@
 namespace im {
 namespace {
 constexpr int Compact=92,Tall=104,Speech=200;
-const char* Tip="双方每天各发送至少一条私聊消息，点亮当天火苗；连续满 7 天提升一级。\n今日只有单方发送时保留昨天的连续天数；漏掉一个完整自然日后重新开始。\n按当前服务统计，已撤回的消息不计入。点击小火人可以打招呼。";
+const char* Tip="双方每天各发送至少一条私聊消息，点亮当天火苗；连续满 7 天提升一级。\n今日只有单方发送时保留昨天的连续天数；漏掉一个完整自然日后重新开始。\n按当前服务统计，已撤回的消息不计入。点击小火人可以打招呼。\n小火人由你们两人共用：右键可以换装，对方会同时看到。";
 }
 FireBuddyHsx::FireBuddyHsx(QWidget* parent,Mode mode):QWidget(parent),mode_(mode),timer_(new QTimer(this)){
     setObjectName(mode==Mode::Floating?"floatingBuddy":mode==Mode::Swatch?"buddySwatch":"fireBuddy");timer_->setInterval(80);
@@ -45,6 +47,10 @@ void FireBuddyHsx::mouseMoveEvent(QMouseEvent* event){
 }
 void FireBuddyHsx::mouseReleaseEvent(QMouseEvent*){
     if(mode_!=Mode::Floating)return;if(!dragging_)greet();dragging_=false;setCursor(Qt::OpenHandCursor);
+}
+void FireBuddyHsx::contextMenuEvent(QContextMenuEvent* event){
+    if(mode_!=Mode::Floating||!wardrobe_)return;QMenu menu(this);
+    connect(menu.addAction("给小火人换装（好友同步看到）"),&QAction::triggered,this,[this]{wardrobe_();});menu.exec(event->globalPos());
 }
 QString FireBuddyHsx::statusLine() const{
     const int today=state_.value("today").toInt();

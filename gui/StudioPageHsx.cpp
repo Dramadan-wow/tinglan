@@ -36,8 +36,12 @@ QWidget* StudioPageHsx::appearance(){
     auto* custom=new QHBoxLayout;custom->addWidget(new QLabel("头像框"));frame_=new QComboBox;frame_->setObjectName("avatarFrame");custom->addWidget(frame_,1);custom->addStretch(1);l->addLayout(custom);
     for(const auto& value:StudioStoreHsx::catalog("frame")){const auto s=value.toObject();frame_->addItem(s.value("name").toString()+" · "+tierLabel(s.value("tier").toInt()),s.value("id").toString());}
     connect(frame_,&QComboBox::activated,this,[this]{const auto id=frame_->currentData().toString();if(StudioStoreHsx::item("frame",id).value("tier").toInt()>session_.studio().membership(session_.user()).value("tier").toInt()){showMembership();refresh();return;}session_.personalize([&]{session_.studio().setChoice("frame",id);});});
-    // Fire buddy wardrobe: skins recolour the flame, outfits dress it; every sample shows the current pairing.
-    l->addWidget(heading("小火人衣橱 · 换皮肤，也换衣服"));petPreview_=new FireBuddyHsx;l->addWidget(petPreview_);
+    // Fire buddy wardrobe: each friend pair shares one buddy; skins recolour the flame, outfits dress it.
+    l->addWidget(heading("小火人衣橱 · 和好友一起换装"));
+    auto* pairRow=new QHBoxLayout;pairRow->addWidget(new QLabel("和谁的小火人"));buddyFriend_=new QComboBox;buddyFriend_->setObjectName("buddyFriend");pairRow->addWidget(buddyFriend_,1);pairRow->addStretch(1);l->addLayout(pairRow);
+    connect(buddyFriend_,&QComboBox::activated,this,[this]{buddyTarget_=buddyFriend_->currentData().toInt();refresh();});
+    buddyNote_=new QLabel;buddyNote_->setObjectName("muted");buddyNote_->setWordWrap(true);l->addWidget(buddyNote_);
+    petPreview_=new FireBuddyHsx;l->addWidget(petPreview_);
     auto wardrobe=[&](const QString& kind,const QString& title,int columns,QMap<QString,QPushButton*>& buttons,QMap<QString,FireBuddyHsx*>& samples){
         auto* label=new QLabel(title);label->setStyleSheet("font-size:13px;font-weight:600;color:#55606f;");l->addWidget(label);auto* grid=new QGridLayout;grid->setSpacing(10);int index=0;
         for(const auto& value:StudioStoreHsx::catalog(kind)){const auto s=value.toObject();const auto id=s.value("id").toString();const int need=s.value("tier").toInt();
@@ -46,12 +50,12 @@ QWidget* StudioPageHsx::appearance(){
             auto* name=new QLabel(s.value("name").toString());name->setAlignment(Qt::AlignCenter);name->setStyleSheet("font-size:12px;color:#4a3d55;");box->addWidget(name);
             auto* level=new QLabel(tierLabel(need));level->setAlignment(Qt::AlignCenter);level->setObjectName("muted");box->addWidget(level);
             auto* choose=new QPushButton;choose->setObjectName(kind+"_"+id);box->addWidget(choose);buttons[id]=choose;
-            connect(choose,&QPushButton::clicked,this,[this,kind,id,need]{if(need>session_.studio().membership(session_.user()).value("tier").toInt()){showMembership();return;}session_.personalize([&]{session_.studio().setChoice(kind,id);},kind=="pet"?"小火人换上了新皮肤":"小火人换上了新衣服");});
+            connect(choose,&QPushButton::clicked,this,[this,kind,id,need]{if(need>session_.studio().membership(session_.user()).value("tier").toInt()){showMembership();return;}if(!buddyTarget_)return;session_.personalize([&]{session_.studio().setBuddy(buddyTarget_,kind,id);},kind=="pet"?"小火人换上了新皮肤":"小火人换上了新衣服");refresh();});
             grid->addWidget(card,index/columns,index%columns);++index;}
         l->addLayout(grid);
     };
     wardrobe("pet","皮肤",5,skins_,skinSamples_);wardrobe("outfit","服装",4,outfits_,outfitSamples_);
-    auto* petNote=new QLabel("皮肤和服装可以自由搭配，聊天时小火人会穿着它们浮在对话框上。小火人由好友双方连续聊天养成：每天双方各发送至少一条消息即可点亮，连续 7 天升一级；会员仅解锁外观。");petNote->setWordWrap(true);petNote->setObjectName("muted");l->addWidget(petNote);
+    auto* petNote=new QLabel("每位好友的私聊里有一只你们共用的小火人，浮在对话框上：任何一方换皮肤或服装，双方会同时看到；在聊天里右键小火人也能来这里换装。小火人由双方连续聊天养成：每天各发送至少一条消息即可点亮，连续 7 天升一级；会员服装需由开通相应会员的一方穿上。");petNote->setWordWrap(true);petNote->setObjectName("muted");l->addWidget(petNote);
     l->addWidget(heading("聊天气泡 · 先预览，再选择"));auto* grid=new QGridLayout;grid->setSpacing(14);int index=0;
     for(const auto& value:StudioStoreHsx::catalog("bubble")){const auto s=value.toObject();const auto id=s.value("id").toString();auto* card=new QFrame;card->setObjectName("card");auto* box=new QVBoxLayout(card);box->setContentsMargins(14,14,14,14);box->setSpacing(10);auto* caption=new QLabel(s.value("name").toString()+" · "+tierLabel(s.value("tier").toInt()));caption->setStyleSheet("font-size:12px;color:#736781;");box->addWidget(caption);auto* sample=new BubbleHsx("今天也有，好好相逢。",s,true);sample->setMinimumHeight(58);box->addWidget(sample);auto* choose=new QPushButton;choose->setObjectName("bubble_"+id);box->addWidget(choose);bubbles_[id]=choose;connect(choose,&QPushButton::clicked,this,[this,id,s]{if(s.value("tier").toInt()>session_.studio().membership(session_.user()).value("tier").toInt()){showMembership();return;}session_.personalize([&]{session_.studio().setChoice("bubble",id);},"聊天气泡已应用");});grid->addWidget(card,index/3,index%3);++index;}l->addLayout(grid);return page;
 }
@@ -67,12 +71,18 @@ QWidget* StudioPageHsx::orders(){auto* page=new QWidget;auto* l=new QVBoxLayout(
 void StudioPageHsx::chooseImage(const QString& kind){const auto file=QFileDialog::getOpenFileName(this,kind=="avatar"?"选择你的头像":"选择聊天背景",{},"图片 (*.png *.jpg *.jpeg *.bmp)");if(!file.isEmpty())session_.personalize([&]{session_.studio().importImage(kind,file);},"图片已保存并应用");}
 void StudioPageHsx::refreshPlan(){const int tier=plan_->currentData().toInt();const auto p=StudioStoreHsx::plan(tier);price_->setText(QString("应付 ¥%1  ·  %2").arg(p.value("price").toInt()).arg(p.value("duration").toString()));benefits_->setText(p.value("name").toString()+"会员：解锁此档及以下全部气泡、头像框与小火人外观。");}
 void StudioPageHsx::showMembership(){tabs_->setCurrentIndex(1);}
+void StudioPageHsx::showWardrobe(int friendId){buddyTarget_=friendId;tabs_->setCurrentIndex(0);refresh();}
 void StudioPageHsx::refresh(){if(!session_.signedIn())return;const int user=session_.user(),tier=session_.studio().membership(user).value("tier").toInt();status_->setText(session_.studio().membershipText(user));AvatarHsx avatar(session_.studio(),user,AppSessionHsx::q(session_.data().user(user).name()),68);avatar_->setPixmap(avatar.grab());background_->setText(session_.studio().media(user,"background").isEmpty()?"默认背景 · 头像和背景对所有用户免费":"已使用自定义背景 · 图片随此存档保存");
-    petPreview_->setState({{"preview",true},{"active",true}},StudioStoreHsx::item("pet",session_.studio().choice(user,"pet")));
+    {QSignalBlocker blocker(buddyFriend_);buddyFriend_->clear();
+        for(const auto& [id,friendship]:session_.data().account(user,session_.service()).friends())buddyFriend_->addItem(AppSessionHsx::q(friendship.remark().empty()?session_.data().user(id).name():friendship.remark()),id);
+        if(buddyFriend_->findData(buddyTarget_)<0)buddyTarget_=buddyFriend_->count()?buddyFriend_->itemData(0).toInt():0;buddyFriend_->setCurrentIndex(buddyFriend_->findData(buddyTarget_));}
+    buddyNote_->setText(buddyTarget_?"换装后，你和 "+buddyFriend_->currentText()+" 在私聊里看到的是同一只小火人。":"添加好友后，就能和好友一起给小火人换装。");
+    const auto look=buddyTarget_?session_.studio().buddy(buddyTarget_):QJsonObject{{"pet",StudioStoreHsx::catalog("pet").first().toObject()["id"]},{"outfit",StudioStoreHsx::catalog("outfit").first().toObject()["id"]}};
+    petPreview_->setState({{"preview",true},{"active",true}},StudioStoreHsx::item("pet",look["pet"].toString()));
     for(auto it=themes_.begin();it!=themes_.end();++it)it.value()->setText(StudioStoreHsx::item("theme",it.key()).value("name").toString()+(session_.studio().choice(user,"theme")==it.key()?"  ✓":""));
     for(auto it=bubbles_.begin();it!=bubbles_.end();++it){const int need=StudioStoreHsx::item("bubble",it.key()).value("tier").toInt();it.value()->setText(session_.studio().choice(user,"bubble")==it.key()?"正在使用":need>tier?tierLabel(need)+"解锁":"使用这款气泡");}
     {QSignalBlocker blocker(frame_);frame_->setCurrentIndex(frame_->findData(session_.studio().choice(user,"frame")));}
-    const auto skinId=session_.studio().choice(user,"pet"),outfitId=session_.studio().choice(user,"outfit");const auto skin=StudioStoreHsx::item("pet",skinId),outfit=StudioStoreHsx::item("outfit",outfitId);petPreview_->setOutfit(outfit);
+    const auto skinId=look["pet"].toString(),outfitId=look["outfit"].toString();const auto skin=StudioStoreHsx::item("pet",skinId),outfit=StudioStoreHsx::item("outfit",outfitId);petPreview_->setOutfit(outfit);
     auto label=[tier](const QString& kind,const QString& id,bool current){const int need=StudioStoreHsx::item(kind,id).value("tier").toInt();return current?QString("正在使用"):need>tier?tierLabel(need)+"解锁":kind=="pet"?QString("换上皮肤"):QString("穿上");};
     for(auto it=skinSamples_.begin();it!=skinSamples_.end();++it){it.value()->setState({{"preview",true},{"active",true}},StudioStoreHsx::item("pet",it.key()));it.value()->setOutfit(outfit);skins_[it.key()]->setText(label("pet",it.key(),it.key()==skinId));}
     for(auto it=outfitSamples_.begin();it!=outfitSamples_.end();++it){it.value()->setState({{"preview",true},{"active",true}},skin);it.value()->setOutfit(StudioStoreHsx::item("outfit",it.key()));outfits_[it.key()]->setText(label("outfit",it.key(),it.key()==outfitId));}

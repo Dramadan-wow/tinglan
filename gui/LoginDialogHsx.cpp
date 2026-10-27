@@ -7,6 +7,7 @@
 #include "IconHsx.h"
 #include "ThemeHsx.h"
 #include "UpdateManagerHsx.h"
+#include "QrLoginDialogHsx.h"
 #include <QApplication>
 #include <QAction>
 #include <QButtonGroup>
@@ -33,6 +34,8 @@ LoginDialogHsx::LoginDialogHsx(AppSessionHsx& session,QWidget* parent,bool admin
         QPushButton#loginSubmit {background:#345f44;border:1px solid #345f44;border-radius:11px;color:#ffffff;font-size:14px;padding:13px;font-weight:600;}
         QPushButton#loginSubmit:hover {background:#264b33;}
         QPushButton#registerAccount {background:transparent;border:none;color:#718769;padding:9px;font-size:12px;}
+        QPushButton#qrLogin {background:#eff3e9;border:1px solid #dce5d2;border-radius:11px;color:#355c3d;padding:10px;font-size:13px;font-weight:600;}
+        QPushButton#qrLogin:hover {background:#e6eedd;}
         QLabel#fieldLabel {color:#566b4e;font-size:11px;font-weight:600;}
     )");
     auto* outer=new QHBoxLayout(this);outer->setContentsMargins(16,16,16,16);outer->setSpacing(0);
@@ -73,6 +76,11 @@ LoginDialogHsx::LoginDialogHsx(AppSessionHsx& session,QWidget* parent,bool admin
     linked_=new QCheckBox("联动登录本人已开通的其它服务");linked_->setChecked(true);right->addWidget(linked_);
     error_=new QLabel;error_->setObjectName("loginError");error_->setWordWrap(true);error_->setMinimumHeight(20);error_->setStyleSheet("color:#b46653;font-size:11px;");right->addWidget(error_);
     auto* submit=new QPushButton("登 录 听 澜");submit->setObjectName("loginSubmit");submit->setIcon(IconHsx::get("arrow","#ffffff"));submit->setLayoutDirection(Qt::RightToLeft);submit->setMinimumHeight(22);right->addWidget(submit);
+    qrLogin_=new QPushButton("手机扫码登录");qrLogin_->setObjectName("qrLogin");qrLogin_->setIcon(IconHsx::get("qr","#718769"));right->addWidget(qrLogin_);
+    connect(qrLogin_,&QPushButton::clicked,this,[this]{
+        if(!session_.remote()||service_->currentIndex()<0)return;error_->clear();
+        QrLoginDialogHsx dialog(session_,serviceType(service_->currentData().toInt()),this);dialog.exec();
+    });
     register_=new QPushButton("还未相识？  创建你的账号");register_->setObjectName("registerAccount");right->addWidget(register_);right->addStretch();
     if(settings){auto* connection=new QPushButton("服务器连接设置");connection->setObjectName("connectionSettings");connection->setIcon(IconHsx::get("settings","#718769"));right->addWidget(connection);connect(connection,&QPushButton::clicked,this,[this,settings,submit]{session_.logout();submit->setEnabled(true);register_->setEnabled(true);error_->clear();if(settings())done(2);});}
 #ifdef IM_USER_CLIENT
@@ -89,9 +97,11 @@ LoginDialogHsx::LoginDialogHsx(AppSessionHsx& session,QWidget* parent,bool admin
 #ifdef IM_USER_CLIENT
     role_->removeItem(1);role_->setCurrentIndex(0);selector->hide();
 #endif
+    // Explain why the previous session ended, e.g. the account signed in on another computer.
+    if(const auto reason=session_.takeEndReason();!reason.isEmpty())error_->setText(reason);
 }
 void LoginDialogHsx::roleChanged() {
-    const bool admin=role_->currentIndex()==1;userRole_->setChecked(!admin);if(adminRole_)adminRole_->setChecked(admin);serviceBox_->setVisible(!admin);linked_->setVisible(!admin);register_->setVisible(!admin);
+    const bool admin=role_->currentIndex()==1;userRole_->setChecked(!admin);if(adminRole_)adminRole_->setChecked(admin);serviceBox_->setVisible(!admin);linked_->setVisible(!admin);register_->setVisible(!admin);qrLogin_->setVisible(!admin&&session_.remote());
     title_->setText(admin?"管理空间":"欢迎归来");intro_->setText(admin?"用心守护每一位用户的相逢。":"用熟悉的昵称，开启今天的故事。");userLabel_->setText(admin?"管理员账号":"你的昵称");
     user_->setPlaceholderText(admin?"管理员账号":"输入你的昵称");user_->setAccessibleName(admin?"管理员账号":"昵称");user_->setText(admin?AppSessionHsx::q(session_.admins().name()):session_.lastNickname());
     reveal_->setChecked(false);password_->clear();error_->clear();hint_->setText(admin?"初始账号  admin  /  admin123456\n进入后台后可修改管理员密码。":"使用已注册的昵称登录；新用户请先注册。");if(session_.remote()){hint_->setText(admin?"在线管理：查看同一服务器的账号、登录记录与会员订单。":"账号、私聊、群聊和微博广场由同一服务器同步。");linked_->hide();}services();

@@ -2,6 +2,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QHostAddress>
+#include <QRegularExpression>
 #include <QSslSocket>
 #include <QSslConfiguration>
 #include <QSslCertificate>
@@ -16,7 +17,8 @@ QString explain(const QString& code){
         {"recipient_offline","对方未在线"},{"recipient_unavailable","对方连接暂不可用"},{"invalid_chat","收件人或消息内容无效"},
         {"id_conflict","消息编号与已有内容冲突"},{"dedup_capacity","服务器消息窗口已满，请稍后发送"},
         {"server_busy","服务器繁忙，请稍后重试"},{"login_rate_limit","登录过于频繁，请一分钟后重试"},
-        {"not_authenticated","远程登录已失效"},{"sender_mismatch","发送身份与当前登录不一致"},{"rate_limit","消息过于频繁"}};
+        {"not_authenticated","远程登录已失效"},{"sender_mismatch","发送身份与当前登录不一致"},{"rate_limit","消息过于频繁"},
+        {"invalid_qr_request","服务器拒绝了扫码登录请求"},{"invalid_token","自动登录已失效，请重新登录"}};
     return messages.value(code,"服务端拒绝请求（"+code+"）");
 }
 }
@@ -28,8 +30,9 @@ ChatClientHsx::ChatClientHsx(QObject* parent):QObject(parent) {
 ChatClientHsx::~ChatClientHsx(){stop();}
 void ChatClientHsx::start(const ClientOptionsHsx& options) {
     stop();options_=options;
-    if(options.host.trimmed().isEmpty()||!options.port||(options.workspace?options.username.trimmed().isEmpty():!validUser(options.username))||
-       options.password.toUtf8().size()<(options.workspace?1:12)||options.password.toUtf8().size()>128) {
+    const bool passwordless=options.workspace&&(options.qrLogin||!options.token.isEmpty());
+    if(options.host.trimmed().isEmpty()||!options.port||(!passwordless&&((options.workspace?options.username.trimmed().isEmpty():!validUser(options.username))||
+       options.password.toUtf8().size()<(options.workspace?1:12)||options.password.toUtf8().size()>128))) {
         emit problem(options.workspace?"请输入登录昵称及密码（最多 128 字节）":"请填写服务器、端口、远程账号及 12–128 字节密码");return;
     }
     if(!options.tls && (!options.allowInsecureLoopback || !QHostAddress(options.host).isLoopback())) {
@@ -37,10 +40,10 @@ void ChatClientHsx::start(const ClientOptionsHsx& options) {
     }
     active_=true;everAuthenticated_=false;retryMs_=1000;received_.clear();open();
 }
-void ChatClientHsx::stop(){active_=false;retry_.stop();lost("未连接",false);options_.password.clear();user_.clear();}
+void ChatClientHsx::stop(){active_=false;retry_.stop();lost("未连接",false);options_.password.clear();options_.token.clear();user_.clear();}
 void ChatClientHsx::open() {
     if(!active_)return;
-    decoder_.clear();started_=lastReceived_=clock_.elapsed();
+    decoder_.clear();started_=lastReceived_=clock_.elapsed();waitUntil_=0;
     if(options_.tls){
         if(!QSslSocket::supportsSsl()){lost("此 Qt 环境缺少可用 TLS 后端",false);return;}
         auto* ssl=new QSslSocket(this);socket_=ssl;
@@ -66,8 +69,13 @@ void ChatClientHsx::open() {
     else current->connectToHost(options_.host,options_.port);
 }
 void ChatClientHsx::login(){
-    emit stateChanged("正在验证远程账号…");loginId_=newId();
-    write(envelope("login",{{"username",options_.username},{"password",options_.password},{"workspace",options_.workspace},{"register",options_.registerAccount},{"service",options_.service},{"admin",options_.administrator},{"fileTransfer",1}}, {},{},loginId_));
+    loginId_=newId();
+    if(options_.qrLogin&&options_.token.isEmpty()){emit stateChanged("正在获取登录二维码…");write(envelope("qr_start",{{"service",options_.service},{"device",options_.device},{"fileTransfer",1}}, {},{},loginId_));return;}
+    emit stateChanged("正在验证远程账号…");
+    QJsonObject data{{"workspace",options_.workspace},{"service",options_.service},{"device",options_.device},{"fileTransfer",1}};
+    if(!options_.token.isEmpty())data["token"]=options_.token;
+    else{data["username"]=options_.username;data["password"]=options_.password;data["register"]=options_.registerAccount;data["admin"]=options_.administrator;}
+    write(envelope("login",data,{},{},loginId_));
 }
 bool ChatClientHsx::write(const QJsonObject& message){
     if(!socket_||socket_->state()!=QAbstractSocket::ConnectedState)return false;
@@ -85,7 +93,7 @@ void ChatClientHsx::lost(const QString& reason,bool retry){
     // silently in the background after the dialog already reported a failure.
     const bool initial=options_.workspace&&!everAuthenticated_;
     if(active_&&retry&&!initial){emit stateChanged((options_.workspace?QString("连接暂不可用"):reason)+QString(" · %1 秒后自动重连").arg(retryMs_/1000));retry_.start(retryMs_);retryMs_=std::min(retryMs_*2,30000);}
-    else{const bool notify=active_;active_=false;retry_.stop();options_.password.clear();emit stateChanged(reason);if(notify&&options_.workspace)emit problem(reason);}
+    else{const bool notify=active_;active_=false;retry_.stop();options_.password.clear();options_.token.clear();emit stateChanged(reason);if(notify&&options_.workspace)emit problem(reason);}
 }
 void ChatClientHsx::read(){
     while(socket_&&socket_->bytesAvailable()){
@@ -101,8 +109,17 @@ void ChatClientHsx::handle(const QJsonObject& message){
         if(!data.value("ok").toBool()){emit problem(data.value("detail").toString("登录失败："+explain(data.value("code").toString())));lost("登录失败，请检查远程账号",false);return;}
         user_=data.value("userId").toString();if(options_.workspace?!validUser(user_):user_!=options_.username){lost("登录身份不匹配",false);return;}
         if(options_.workspace&&(data["admin"].toBool()!=options_.administrator)){lost("管理员身份校验不匹配",false);return;}
-        options_.registerAccount=false;authenticated_=everAuthenticated_=true;retryMs_=1000;lastHeartbeat_=clock_.elapsed();emit stateChanged(options_.administrator?"已连接 · 管理数据实时同步":options_.workspace?"已连接 · 消息实时同步":"已连接 · "+user_+(options_.tls?" · TLS 加密":" · 本机明文测试"));emit authenticatedChanged(true);
+        if(data["token"].isString())options_.token=data["token"].toString();
+        options_.registerAccount=false;options_.qrLogin=false;authenticated_=everAuthenticated_=true;retryMs_=1000;lastHeartbeat_=clock_.elapsed();emit stateChanged(options_.administrator?"已连接 · 管理数据实时同步":options_.workspace?"已连接 · 消息实时同步":"已连接 · "+user_+(options_.tls?" · TLS 加密":" · 本机明文测试"));emit authenticatedChanged(true);
         emit fileSession(data["files"].toObject());
+    }else if(type=="qr_ticket"&&!authenticated_&&options_.qrLogin){
+        static const QRegularExpression hex("^[0-9a-f]{32}$");const auto code=data["code"].toString();
+        if(data["requestId"].toString()!=loginId_||!hex.match(code).hasMatch()){lost("二维码响应无效",false);return;}
+        waitUntil_=clock_.elapsed()+std::clamp(data["expires"].toInt(120),10,600)*1000LL;
+        emit stateChanged("请用听澜手机端扫码");emit qrTicket("TINGLANQR1:"+code,std::clamp(data["expires"].toInt(120),10,600));
+    }else if(type=="qr_status"&&!authenticated_&&options_.qrLogin){
+        const auto state=data["state"].toString();emit qrStatus(state);
+        if(state=="cancelled")lost("已在手机上取消登录",false);
     }else if(type=="file_notice"&&authenticated_&&options_.workspace){
         if(message["recipientId"].toString()!=user_||!validId(data["fileId"].toString())){lost("文件通知身份无效",false);return;}emit fileNotice();
     }else if(type=="workspace_sync"&&authenticated_&&options_.workspace){
@@ -126,7 +143,10 @@ void ChatClientHsx::handle(const QJsonObject& message){
         emit messageResult(id,ok,ok?(data.value("duplicate").toBool()?"重复消息已确认，未再次转发":"服务器已转发至对方连接（非已读回执）"):"发送失败："+explain(data.value("code").toString()));
     }else if(type=="error"){
         if(data["code"]=="session_revoked"){lost("管理员已结束此会话，请重新登录",false);emit sessionRevoked();return;}
+        if(data["code"]=="session_replaced"){lost(options_.device=="mobile"?"账号已在另一部手机上登录，本机已下线":"账号已在另一台电脑上登录，本机已下线",false);emit sessionRevoked();return;}
         const auto id=data.value("requestId").toString(),detail=explain(data.value("code").toString());
+        // A server from before 5.7 answers qr_start with not_authenticated.
+        if(!authenticated_&&options_.qrLogin&&id==loginId_){lost(data["code"]=="not_authenticated"?"服务器版本较旧，暂不支持扫码登录":detail,false);return;}
         if(commands_.remove(id))emit workspaceResult(id,{{"ok",false},{"detail",detail}});else if(pending_.remove(id))emit messageResult(id,false,detail);else emit problem(detail);
     }else if(type!="heartbeat"){lost("未知服务器消息类型",false);}
 }
@@ -148,7 +168,7 @@ void ChatClientHsx::tick(){
     const auto keys=pending_.keys();for(const auto& id:keys)if(now-pending_[id]>15000){pending_.remove(id);emit messageResult(id,false,"确认超时，送达状态未知；不会自动重发");}
     const auto requests=commands_.keys();for(const auto& id:requests)if(now-commands_[id]>20000){commands_.remove(id);emit workspaceResult(id,{{"ok",false},{"detail","确认超时，操作结果待同步；请勿重复提交"}});}
     if(!socket_)return;
-    if((!authenticated_&&now-started_>30000)||(authenticated_&&now-lastReceived_>45000)){lost("连接或心跳超时");return;}
+    if((!authenticated_&&now-started_>30000&&now>waitUntil_)||(authenticated_&&now-lastReceived_>45000)){lost("连接或心跳超时");return;}
     if(authenticated_&&now-lastHeartbeat_>=15000){lastHeartbeat_=now;if(!write(envelope("heartbeat",{},user_)))lost("心跳发送失败");}
 }
 }

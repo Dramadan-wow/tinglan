@@ -14,6 +14,10 @@ struct ClientOptionsHsx {
     int service=0;
     bool tls=true;
     bool allowInsecureLoopback=false;
+    // qrLogin asks the server for a sign-in QR code instead of sending a password. A token from a QR
+    // sign-in is kept in memory only, so the session can reconnect after a network drop.
+    bool qrLogin=false;
+    QString device="desktop",token;
 };
 class ChatClientHsx final : public QObject {
     Q_OBJECT
@@ -40,6 +44,8 @@ signals:
     void workspaceResult(const QString& id,const QJsonObject& data);
     void problem(const QString& detail);
     void sessionRevoked();
+    void qrTicket(const QString& text,int seconds);
+    void qrStatus(const QString& state);
 private:
     void open();
     void login();
@@ -54,7 +60,7 @@ private:
     QTimer retry_,timer_;
     QElapsedTimer clock_;
     QHash<QString,qint64> pending_,received_;
-    qint64 lastReceived_=0,started_=0,lastHeartbeat_=0;
+    qint64 lastReceived_=0,started_=0,lastHeartbeat_=0,waitUntil_=0;
     QString user_,loginId_,snapshotId_;
     QByteArray snapshotBytes_;
     int snapshotPart_=0,snapshotCount_=0;

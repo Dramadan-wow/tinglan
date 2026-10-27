@@ -26,6 +26,9 @@ public:
     void decideOrder(const QString& id, bool approve, const QString& note);
     QJsonArray orders(bool all = false) const;
     QJsonObject streak(int other) const;
+    // The fire buddy the signed-in user shares with one friend: both see it, either may dress it.
+    QJsonObject buddy(int other) const;
+    void setBuddy(int other, const QString& kind, const QString& value);
     const QString& file() const { return file_; }
 private:
     int actor() const;

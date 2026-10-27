@@ -44,11 +44,16 @@ public final class UiChecks extends Instrumentation {
         JSONArray members=new JSONArray();for(int id=1;id<=3;id++)members.put(new JSONObject().put("id",id).put("services",new JSONArray().put(0)));
         root.put("groups",new JSONArray().put(new JSONObject().put("id",1001).put("name","听澜同频群").put("owner",1).put("members",members).put("admins",new JSONArray()).put("pending",new JSONArray()).put("notice","欢迎来到听澜").put("mode",0)));
         JSONArray messages=new JSONArray();
+        // Both friends wrote today, so the shared fire buddy is lit; older ids keep the list preview unchanged.
+        long now=System.currentTimeMillis()/1000-120;
+        messages.put(new JSONObject().put("id","9").put("kind",0).put("sender",2).put("target",1).put("source",0).put("destination",0).put("text","早安，今天也一起加油。").put("created",now).put("recalled",false).put("read",new JSONArray().put(1)).put("stars",new JSONArray()));
+        messages.put(new JSONObject().put("id","10").put("kind",0).put("sender",1).put("target",2).put("source",0).put("destination",0).put("text","早安！").put("created",now+30).put("recalled",false).put("read",new JSONArray().put(2)).put("stars",new JSONArray()));
         messages.put(new JSONObject().put("id","11").put("kind",0).put("sender",2).put("target",1).put("source",0).put("destination",0).put("text","周末一起去看展吗？听说新的山水展很好看。").put("created",1792276200).put("recalled",false).put("read",new JSONArray().put(1)).put("stars",new JSONArray()));
         messages.put(new JSONObject().put("id","12").put("kind",0).put("sender",1).put("target",2).put("source",0).put("destination",0).put("text","好呀，我们周六上午见。").put("created",1792276500).put("recalled",false).put("read",new JSONArray().put(2)).put("stars",new JSONArray().put(1)));
         messages.put(new JSONObject().put("id","13").put("kind",1).put("sender",3).put("target",1001).put("source",0).put("destination",0).put("text","今晚八点线上分享，欢迎大家来听。").put("created",1792279800).put("recalled",false).put("read",new JSONArray()).put("stars",new JSONArray()));
         root.put("messages",messages).put("requests",new JSONArray().put(new JSONObject().put("id","21").put("from",3).put("to",1).put("source",0).put("destination",0).put("reason","你好，想和你一起交流摄影。").put("status",0)));
         root.put("feed",new JSONArray()).put("appearances",new JSONObject().put("2",new JSONObject().put("bubble","peach").put("frame","rose")).put("3",new JSONObject().put("bubble","sun"))).put("follows",new JSONArray().put(2));
+        root.put("buddies",new JSONObject().put("2",new JSONObject().put("pet","mint").put("outfit","scarf"))).put("membership",new JSONObject().put("tier",1));
         JSONArray posts=new JSONArray();posts.put(new JSONObject().put("id","1").put("author",2).put("text","#今天的小确幸#\n把喜欢的瞬间收集起来，平凡的日子也会闪闪发光。\n\n这一刻，与你同频。").put("created",1792276200).put("image","").put("likes",18).put("liked",true).put("comments",new JSONArray().put(new JSONObject().put("author",3).put("text","好喜欢这样的生活节奏！"))));posts.put(new JSONObject().put("id","2").put("author",3).put("text","日落不会迟到，快乐也是。今天也拍到了喜欢的天空。").put("created",1792272000).put("image","").put("likes",6).put("liked",false).put("comments",new JSONArray()));root.put("weibo",posts);
         root.put("directMessages",new JSONArray().put(new JSONObject().put("id","1").put("sender",2).put("recipient",1).put("post","1").put("text","谢谢你分享的灵感，一起记录生活吧。").put("created",1792276200).put("read",true)));
         return root;
@@ -56,7 +61,7 @@ public final class UiChecks extends Instrumentation {
     @Override public void onStart(){Bundle result=new Bundle();try{
         getTargetContext().getSharedPreferences("connection",0).edit().clear().commit();
         Intent intent=new Intent().setClassName(getTargetContext(),"cn.tinglan.mobile.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        activity=startActivitySync(intent);waitForIdleSync();check("欢迎回来");check("听澜山水主题");screenshot("01-login-river-phone");
+        activity=startActivitySync(intent);waitForIdleSync();check("欢迎回来");check("听澜山水主题");check("下次打开自动登录");screenshot("01-login-river-phone");
         main(()->{try{set("service",2);call("showLogin");}catch(Exception e){throw new RuntimeException(e);}});check("伊冯灵感主题");check("伊冯灵感 · 记录属于你的频率");screenshot("02-login-yvonne-phone");
         JSONObject data=fixture();Class<?> workspace=getTargetContext().getClassLoader().loadClass("cn.tinglan.mobile.Workspace");Object model=workspace.getConstructor(JSONObject.class).newInstance(data);
         main(()->{try{set("workspace",model);set("service",2);set("tab",2);set("channel","weibo");set("connectionState","界面验证 · 隔离示例数据");call("showHome");}catch(Exception e){throw new RuntimeException(e);}});
@@ -66,7 +71,11 @@ public final class UiChecks extends Instrumentation {
         // Ordinary services follow the desktop workspace: 会话 list, desktop-style chat and the friends page.
         main(()->{try{set("weiboInbox",false);set("weiboFilter",0);set("service",0);set("tab",0);set("channel","moments");call("showHome");}catch(Exception e){throw new RuntimeException(e);}});
         check("每一次相逢");check("晴空来信");check("听澜同频群");check("好呀，我们周六上午见");screenshot("06-chats-phone");
-        main(()->{try{open(0,2);}catch(Exception e){throw new RuntimeException(e);}});check("周末一起去看展吗");check("已读");check("发送消息");screenshot("07-chat-phone");
+        main(()->{try{open(0,2);}catch(Exception e){throw new RuntimeException(e);}});check("周末一起去看展吗");check("已读");check("发送消息");check("小火人，连续聊天 1 天");screenshot("07-chat-phone");
+        // Long-pressing the buddy opens the wardrobe shared with this friend.
+        main(()->{try{Method m=activity.getClass().getDeclaredMethod("wardrobe",int.class);m.setAccessible(true);m.invoke(activity,2);}catch(Exception e){throw new RuntimeException(e);}});screenshot("14-buddy-wardrobe-phone");
+        sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();
+        main(()->{try{set("chatKind",-1);set("tab",3);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("扫一扫");check("小火人衣橱");screenshot("15-mine-phone");
         main(()->{try{set("chatKind",-1);set("tab",1);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("新的朋友");check("晴空来信");screenshot("08-friends-phone");
         main(()->{try{set("tab",5);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("山野手记");check("交流摄影");screenshot("09-notices-phone");
         // A density change recreates activities; never assert against a detached old view tree.

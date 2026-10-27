@@ -47,7 +47,11 @@ void ChatServerHsx::incomingConnection(qintptr descriptor){
     connect(socket,&QTcpSocket::disconnected,this,[this,socket,peer]{
         if(files_&&!peer->fileToken.isEmpty()){const auto token=peer->fileToken;QMetaObject::invokeMethod(files_,[service=files_,token]{service->revoke(token);},Qt::QueuedConnection);}
         if(!peer->user.isEmpty()&&online_.value(peer->user)==socket)online_.remove(peer->user);
-        try{if(workspace_&&peer->workspaceUser)workspace_->online(peer->workspaceUser,false,im::ServiceHsx(peer->service));
+        if(!peer->onlineKey.isEmpty()&&online_.value(peer->onlineKey)==socket)online_.remove(peer->onlineKey);
+        if(!peer->qrCode.isEmpty())tickets_.remove(peer->qrCode);
+        // The account stays online while its other device (or the connection that replaced this one) is connected.
+        bool elsewhere=false;for(const auto& other:peers_.values())if(other!=peer&&peer->workspaceUser&&other->workspaceUser==peer->workspaceUser)elsewhere=true;
+        try{if(workspace_&&peer->workspaceUser&&!elsewhere)workspace_->online(peer->workspaceUser,false,im::ServiceHsx(peer->service));
             if(workspace_&&peer->administrator)workspace_->loginAudit({},0,im::ServiceHsx::Count,"管理员登出 / 连接断开",true);
         }catch(const std::exception&){emit logLine("logout_audit_failed");}
         emit logLine("disconnected user="+peer->user);peers_.remove(socket);socket->deleteLater();
@@ -91,6 +95,7 @@ void ChatServerHsx::handle(const std::shared_ptr<Peer>& peer,const QJsonObject& 
     if(type=="update_check"||type=="update_chunk"){update(peer,m);return;}
     if(peer->updater){error(peer,"update_connection_only",id,true);return;}
     if(type=="login"){login(peer,m);return;}
+    if(type=="qr_start"){qrStart(peer,m);return;}
     if(peer->user.isEmpty()){error(peer,"not_authenticated",id);return;}
     // A claimed sender can never override the authenticated connection identity.
     if(m.value("senderId").toString()!=peer->user){error(peer,"sender_mismatch",id);return;}
@@ -107,6 +112,12 @@ void ChatServerHsx::handle(const std::shared_ptr<Peer>& peer,const QJsonObject& 
         }
     }
     else if(type=="chat"&&!peer->workspaceUser&&!peer->administrator){peer->lastActive=clock_.elapsed();chat(peer,m);}
+    else if((type=="qr_scan"||type=="qr_confirm")&&peer->workspaceUser){peer->lastActive=clock_.elapsed();qrAction(peer,m);}
+    else if(type=="logout"&&peer->workspaceUser&&workspace_){
+        // Signing out on this device forgets its automatic sign-in; the connection closes after the reply.
+        try{workspace_->forgetToken(peer->workspaceUser,m["data"].toObject()["token"].toString());}catch(const std::exception&){emit logLine("token_forget_failed");}
+        send(peer,envelope("logout_result",{{"requestId",id},{"ok",true}}, {},peer->user));peer->closing=true;peer->socket->disconnectFromHost();
+    }
     else error(peer,"unknown_type",id);
 }
 void ChatServerHsx::login(const std::shared_ptr<Peer>& peer,const QJsonObject& message){
@@ -152,7 +163,14 @@ void ChatServerHsx::chat(const std::shared_ptr<Peer>& peer,const QJsonObject& m)
 }
 
 void ChatServerHsx::workspaceLogin(const std::shared_ptr<Peer>& peer,const QJsonObject& message){
-    const auto data=message["data"].toObject();const auto nickname=data["username"].toString().trimmed(),password=data["password"].toString(),request=message["id"].toString();const bool registration=data["register"].toBool(),administrator=data["admin"].toBool();const int service=data["service"].toInt(-1);
+    const auto data=message["data"].toObject();
+    if(!peer->authenticating&&peer->user.isEmpty()){
+        const auto device=data["device"].toString();peer->legacyClient=!data.contains("device");
+        peer->device=device=="desktop"||device=="mobile"?device:data["fileTransfer"].toInt()==1?"desktop":"mobile";peer->wantsFiles=data["fileTransfer"].toInt()==1;
+    }
+    if(data.contains("token")){tokenLogin(peer,message);return;}
+    const auto nickname=data["username"].toString().trimmed(),password=data["password"].toString(),request=message["id"].toString();const bool registration=data["register"].toBool(),administrator=data["admin"].toBool();const int service=data["service"].toInt(-1);
+    const bool remember=data["remember"].toBool()&&peer->device=="mobile";
     if(!workspace_||!peer->user.isEmpty()||peer->authenticating||nickname.isEmpty()||nickname.toUtf8().size()>60||password.isEmpty()||password.toUtf8().size()>128||service<0||service>=im::ActiveServiceCountHsx||!message["senderId"].toString().isEmpty()||!message["recipientId"].toString().isEmpty()||(registration&&(administrator||password.toUtf8().size()<qsizetype(im::PasswordHsx::RemoteMinimum)))){error(peer,"invalid_login",request,true);return;}
     const auto ip=peer->socket->peerAddress().toString();const auto now=clock_.elapsed();
     if(!attempts_.contains(ip)&&attempts_.size()>=1024){error(peer,"server_busy",request,true);return;}
@@ -163,13 +181,12 @@ void ChatServerHsx::workspaceLogin(const std::shared_ptr<Peer>& peer,const QJson
     const auto adminRecord=administrator?workspace_->adminCredential(nickname):std::string{};
     const auto record=administrator?(adminRecord.empty()?dummy:adminRecord):(user?workspace_->credential(user,im::serviceType(service)):dummy);
     peer->authenticating=true;++authJobs_;
-    const bool wantsFiles=data["fileTransfer"].toInt()==1;
-    workers_.start([this,peer,nickname,password,request,registration,service,user,record,administrator,adminRecord,wantsFiles]{
+    workers_.start([this,peer,nickname,password,request,registration,service,user,record,administrator,adminRecord,remember]{
         bool valid=false;std::string hash,upgraded;
         try{if(registration){hash=im::PasswordHsx::hash(password.toStdString());valid=true;}else valid=im::PasswordHsx::verify(password.toStdString(),record)&&(administrator?!adminRecord.empty():user!=0);
             // Rehash older 100000-round digests here, off the event loop, while the plain password is still known.
             if(valid&&!registration&&im::PasswordHsx::outdated(record))upgraded=im::PasswordHsx::hash(password.toStdString(),1);}catch(...){}
-        QMetaObject::invokeMethod(this,[this,peer,nickname,request,registration,service,user,record,valid,hash,upgraded,administrator,wantsFiles]{
+        QMetaObject::invokeMethod(this,[this,peer,nickname,request,registration,service,user,record,valid,hash,upgraded,administrator,remember]{
             --authJobs_;if(!peer->socket||!peers_.contains(peer->socket.data())||peer->closing)return;peer->authenticating=false;
             int authenticated=user;QString reason="账号或密码不正确";
             auto upgrade=[&](int owner){if(upgraded.empty())return;try{workspace_->upgradeCredential(owner,im::ServiceHsx(service),record,upgraded);emit logLine("credential_upgraded");}catch(const std::exception&){emit logLine("credential_upgrade_failed");}};
@@ -184,18 +201,85 @@ void ChatServerHsx::workspaceLogin(const std::shared_ptr<Peer>& peer,const QJson
                 }
                 if(registration)authenticated=workspace_->registerUser(nickname,hash,im::serviceType(service));
                 else if(workspace_->resolve(nickname,im::serviceType(service))!=user||workspace_->credential(user,im::serviceType(service))!=record)throw std::runtime_error("账号信息已变更，请重新登录");
-                const auto stable="u"+QString::number(authenticated);if(online_.contains(stable))throw std::runtime_error("账号已在另一台设备登录");
                 if(!registration)upgrade(authenticated);
-                peer->workspaceUser=authenticated;peer->service=service;peer->user=stable;peer->lastActive=clock_.elapsed();online_[stable]=peer->socket.data();workspace_->online(authenticated,true,im::serviceType(service));
-                QJsonObject fileSession;
-                if(files_&&options_.tls&&wantsFiles){QByteArray secret(32,Qt::Uninitialized);for(auto& b:secret)b=char(QRandomGenerator::system()->generate());peer->fileToken=QString::fromLatin1(secret.toHex());refreshFileGrants();fileSession={{"port",filePort_},{"token",peer->fileToken},{"user",authenticated}};}
-                send(peer,envelope("login_result",{{"requestId",request},{"ok",true},{"userId",stable},{"numericId",authenticated},{"workspace",true},{"files",fileSession}}, {},stable));for(const auto& other:peers_.values())if(other->workspaceUser||other->administrator)synchronize(other);return;
+                QJsonObject extra;if(remember)extra["token"]=workspace_->issueToken(authenticated,im::serviceType(service),"mobile",30LL*86400);
+                admit(peer,authenticated,service,request,extra);return;
             }catch(const std::exception& e){reason=QString::fromUtf8(e.what());}
             try{workspace_->loginAudit(nickname,user,im::ServiceHsx(service),registration?"注册失败":administrator?"管理员登录失败":"用户登录失败："+reason,administrator);}catch(const std::exception&){emit logLine("login_audit_failed");}
             for(const auto& other:peers_.values())if(other->administrator)synchronize(other);
             send(peer,envelope("login_result",{{"requestId",request},{"ok",false},{"code","invalid_credentials"},{"detail",reason}}));peer->closing=true;peer->socket->disconnectFromHost();
         },Qt::QueuedConnection);
     });
+}
+bool ChatServerHsx::throttle(const std::shared_ptr<Peer>& peer,const QString& request){
+    const auto ip=peer->socket->peerAddress().toString();const auto now=clock_.elapsed();
+    if(!attempts_.contains(ip)&&attempts_.size()>=1024){error(peer,"server_busy",request,true);return false;}
+    auto& attempt=attempts_[ip];if(now-attempt.first>60000)attempt={now,0};
+    if(++attempt.second>20){error(peer,"login_rate_limit",request,true);return false;}return true;
+}
+void ChatServerHsx::tokenLogin(const std::shared_ptr<Peer>& peer,const QJsonObject& message){
+    const auto data=message["data"].toObject();const auto request=message["id"].toString();
+    if(!workspace_||!peer->user.isEmpty()||peer->authenticating||!peer->qrCode.isEmpty()||data["register"].toBool()||data["admin"].toBool()||!data["token"].isString()||
+       !message["senderId"].toString().isEmpty()||!message["recipientId"].toString().isEmpty()){error(peer,"invalid_login",request,true);return;}
+    if(!throttle(peer,request))return;
+    int service=0;QString device;int user=0;
+    try{user=workspace_->redeemToken(data["token"].toString(),service,device);}catch(const std::exception&){emit logLine("token_check_failed");}
+    if(!user){
+        send(peer,envelope("login_result",{{"requestId",request},{"ok",false},{"code","invalid_token"},{"detail","自动登录已失效，请重新输入密码登录"}}));
+        peer->closing=true;peer->socket->disconnectFromHost();return;
+    }
+    peer->device=device;admit(peer,user,service,request,{});
+}
+void ChatServerHsx::admit(const std::shared_ptr<Peer>& peer,int user,int service,const QString& request,QJsonObject result){
+    const auto stable="u"+QString::number(user);const auto key=stable+":"+peer->device;
+    // A newer sign-in on the same kind of device replaces the older connection (also a stale one after a network drop).
+    if(const auto old=peers_.value(online_.value(key));old&&old!=peer){
+        online_.remove(key);old->onlineKey.clear();emit logLine("session_replaced user="+stable+" device="+peer->device);
+        error(old,old->legacyClient?"session_revoked":"session_replaced",{},true);
+    }
+    peer->workspaceUser=user;peer->service=service;peer->user=stable;peer->onlineKey=key;peer->lastActive=clock_.elapsed();online_[key]=peer->socket.data();
+    workspace_->online(user,true,im::serviceType(service));
+    QJsonObject fileSession;
+    if(files_&&options_.tls&&peer->wantsFiles){QByteArray secret(32,Qt::Uninitialized);for(auto& b:secret)b=char(QRandomGenerator::system()->generate());peer->fileToken=QString::fromLatin1(secret.toHex());refreshFileGrants();fileSession={{"port",filePort_},{"token",peer->fileToken},{"user",user}};}
+    result["requestId"]=request;result["ok"]=true;result["userId"]=stable;result["numericId"]=user;result["workspace"]=true;result["files"]=fileSession;result["service"]=service;result["device"]=peer->device;
+    send(peer,envelope("login_result",result,{},stable));emit logLine("authenticated user="+stable+" device="+peer->device);
+    for(const auto& other:peers_.values())if(other->workspaceUser||other->administrator)synchronize(other);
+}
+void ChatServerHsx::qrStart(const std::shared_ptr<Peer>& peer,const QJsonObject& m){
+    const auto id=m["id"].toString();const auto data=m["data"].toObject();const int service=data["service"].toInt(-1);
+    if(!workspace_||!peer->user.isEmpty()||peer->authenticating||!peer->qrCode.isEmpty()||service<0||service>=im::ActiveServiceCountHsx||
+       !m["senderId"].toString().isEmpty()||!m["recipientId"].toString().isEmpty()){error(peer,"invalid_qr_request",id,true);return;}
+    if(!throttle(peer,id))return;
+    if(tickets_.size()>=256){error(peer,"server_busy",id,true);return;}
+    QByteArray secret(16,Qt::Uninitialized);for(auto& b:secret)b=char(QRandomGenerator::system()->generate());const auto code=QString::fromLatin1(secret.toHex());
+    constexpr qint64 lifetime=120000;
+    peer->device="desktop";peer->legacyClient=false;peer->wantsFiles=data["fileTransfer"].toInt()==1;peer->qrCode=code;peer->qrRequest=id;peer->qrUntil=clock_.elapsed()+lifetime;
+    tickets_[code]={peer,service,peer->qrUntil,0};
+    send(peer,envelope("qr_ticket",{{"requestId",id},{"code",code},{"expires",int(lifetime/1000)}}));
+}
+void ChatServerHsx::qrAction(const std::shared_ptr<Peer>& peer,const QJsonObject& m){
+    const auto id=m["id"].toString();const auto data=m["data"].toObject();const auto code=data["code"].toString();
+    auto reply=[&](bool ok,const QString& detail,QJsonObject extra){extra["requestId"]=id;extra["ok"]=ok;extra["detail"]=detail;send(peer,envelope("qr_result",extra,{},peer->user));};
+    const auto ticket=tickets_.find(code);const auto desktop=ticket==tickets_.end()?nullptr:ticket->peer.lock();
+    if(!desktop||!desktop->socket||desktop->closing||!desktop->user.isEmpty()||clock_.elapsed()>ticket->expires){reply(false,"二维码已失效，请在电脑上刷新后重新扫描",{});return;}
+    if(!workspace_->canLogin(peer->workspaceUser,im::serviceType(ticket->service))){reply(false,"你的账号尚未开通电脑端所选的服务",{});return;}
+    if(m["type"]=="qr_scan"){
+        if(ticket->scannedBy&&ticket->scannedBy!=peer->workspaceUser){reply(false,"二维码已被其他账号扫描",{});return;}
+        ticket->scannedBy=peer->workspaceUser;send(desktop,envelope("qr_status",{{"state","scanned"}}));
+        // The phone shows where the computer connects from, so a code shown by someone else stands out.
+        auto address=desktop->socket->peerAddress();if(const auto v4=address.toIPv4Address();v4)address=QHostAddress(v4);
+        reply(true,{},{{"stage","scan"},{"service",ticket->service},{"address",address.toString()}});return;
+    }
+    if(ticket->scannedBy!=peer->workspaceUser){reply(false,"请先扫描电脑上的二维码",{});return;}
+    const int service=ticket->service;tickets_.erase(ticket);desktop->qrCode.clear();
+    if(!data["approve"].toBool()){
+        send(desktop,envelope("qr_status",{{"state","cancelled"}}));desktop->closing=true;desktop->socket->disconnectFromHost();
+        reply(true,{},{{"stage","cancel"}});return;
+    }
+    // The desktop keeps this short-lived token in memory only, to reconnect after a network drop.
+    QJsonObject extra;try{extra["token"]=workspace_->issueToken(peer->workspaceUser,im::serviceType(service),"desktop",12LL*3600);}catch(const std::exception&){emit logLine("qr_token_failed");}
+    admit(desktop,peer->workspaceUser,service,desktop->qrRequest,extra);
+    reply(true,{},{{"stage","confirm"}});
 }
 void ChatServerHsx::synchronize(const std::shared_ptr<Peer>& peer){
     if(!peer->socket||(!peer->workspaceUser&&!peer->administrator)||peer->closing)return;if(peer->syncing){peer->resync=true;return;}
@@ -227,7 +311,9 @@ void ChatServerHsx::refreshFileGrants(){
 }
 void ChatServerHsx::tick(){
     const auto now=clock_.elapsed();const auto peers=peers_.values();
-    for(const auto& p:peers)if(p->socket&&(p->updater?(now-p->lastActive>30000||now-p->created>1800000):((p->user.isEmpty()&&now-p->created>options_.loginTimeoutMs)||(!p->user.isEmpty()&&now-p->lastActive>options_.idleTimeoutMs)))){emit logLine("timeout user="+p->user);p->socket->abort();}
+    // A desktop showing a sign-in QR code may wait for the phone until its ticket expires.
+    for(const auto& p:peers)if(p->socket&&(p->updater?(now-p->lastActive>30000||now-p->created>1800000):((p->user.isEmpty()&&now-p->created>options_.loginTimeoutMs&&now>p->qrUntil)||(!p->user.isEmpty()&&now-p->lastActive>options_.idleTimeoutMs)))){emit logLine("timeout user="+p->user);p->socket->abort();}
+    for(auto it=tickets_.begin();it!=tickets_.end();)if(now>it->expires||it->peer.expired())it=tickets_.erase(it);else++it;
     for(auto it=seen_.begin();it!=seen_.end();)if(now-it->time>600000)it=seen_.erase(it);else++it;
     for(auto it=attempts_.begin();it!=attempts_.end();)if(now-it->first>60000)it=attempts_.erase(it);else++it;
 }

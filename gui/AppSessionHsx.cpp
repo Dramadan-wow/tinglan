@@ -127,7 +127,9 @@ void AppSessionHsx::configureRemote(const QString& filename){
     connect(&files_,&net::FileTransferManagerHsx::problem,this,&AppSessionHsx::failed);
     connect(&remoteClient_,&net::ChatClientHsx::stateChanged,this,[this](const QString& text){connectionStatus_=text;emit connectionChanged(text);});
     connect(&remoteClient_,&net::ChatClientHsx::problem,this,[this](const QString& text){if(remoteLoginPending_){remoteLoginPending_=false;emit failed(text);emit remoteLoginFinished(false);}else{connectionStatus_=text;emit connectionChanged(text);}});
-    connect(&remoteClient_,&net::ChatClientHsx::sessionRevoked,this,[this]{remoteAdmin_=false;user_=0;emit sessionEnded();});
+    connect(&remoteClient_,&net::ChatClientHsx::sessionRevoked,this,[this]{remoteAdmin_=false;user_=0;endReason_=connectionStatus_;emit sessionEnded();});
+    connect(&remoteClient_,&net::ChatClientHsx::qrTicket,this,&AppSessionHsx::qrTicket);
+    connect(&remoteClient_,&net::ChatClientHsx::qrStatus,this,&AppSessionHsx::qrStatus);
     connect(&remoteClient_,&net::ChatClientHsx::workspaceSnapshot,this,[this](const QJsonObject& snapshot){
         try{if(remoteOptions_.administrator){
                 require(snapshot["admin"].toBool()&&remoteClient_.user()=="workspace_admin","管理同步身份不匹配");
@@ -153,6 +155,12 @@ void AppSessionHsx::configureRemote(const QString& filename){
 void AppSessionHsx::loginRemote(const QString& nickname,ServiceHsx service,const QString& password,bool registration){
     legacyAppearanceAttempted_=false;
     admins_.logout();remoteAdmin_=false;remoteOptions_.administrator=false;remoteLoginPending_=true;service_=service;remoteOptions_.username=nickname.trimmed();remoteOptions_.password=password;remoteOptions_.service=int(service);remoteOptions_.registerAccount=registration;remoteClient_.start(remoteOptions_);remoteOptions_.password.clear();
+}
+void AppSessionHsx::loginRemoteQr(ServiceHsx service){
+    legacyAppearanceAttempted_=false;
+    admins_.logout();remoteAdmin_=false;remoteOptions_.administrator=false;remoteLoginPending_=true;service_=service;
+    remoteOptions_.username.clear();remoteOptions_.password.clear();remoteOptions_.service=int(service);remoteOptions_.registerAccount=false;remoteOptions_.qrLogin=true;
+    remoteClient_.start(remoteOptions_);remoteOptions_.qrLogin=false;
 }
 void AppSessionHsx::loginRemoteAdmin(const QString& name,const QString& password){
 #ifdef IM_USER_CLIENT

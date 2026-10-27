@@ -63,7 +63,8 @@ def main():
             subprocess.run(command,cwd=ROOT,env=env,stdout=stream,stderr=subprocess.STDOUT,check=True,timeout=timeout,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         run([buildtools/('aapt2'+executable),'compile','--dir',resources,'-o',stage/'resources.zip'])
         run([buildtools/('aapt2'+executable),'link','-o',stage/'resources.apk','--manifest',source/'AndroidManifest.xml','-I',platform,'--java',generated,'--auto-add-overlay',stage/'resources.zip'])
-        files=sorted((source/'src').rglob('*.java'))+sorted(generated.rglob('*.java'))
+        # ZXing core (Apache-2.0, QR decoding subset only) is compiled from source; see third_party/zxing.
+        files=sorted((source/'src').rglob('*.java'))+sorted((source/'third_party/zxing/src').rglob('*.java'))+sorted(generated.rglob('*.java'))
         args=stage/'javac.args'
         args.write_text('\n'.join('"'+f.relative_to(ROOT).as_posix()+'"' for f in files),encoding='utf-8')
         run([java_tool('javac'),'-J-Dfile.encoding=UTF-8','-encoding','UTF-8','--release','8','-classpath',platform,'-d',classes,'@'+args.relative_to(ROOT).as_posix()])

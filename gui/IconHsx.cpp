@@ -13,6 +13,7 @@ QPixmap draw(const QString& name,const QColor& color) {
     else if(name=="bell") {path.moveTo(5,16);path.lineTo(6,13);path.lineTo(6,9);path.cubicTo(6,1,18,1,18,9);path.lineTo(18,13);path.lineTo(20,17);path.lineTo(4,17);path.closeSubpath();p.drawPath(path);p.drawArc(QRectF(9,17,6,5),180*16,180*16);}
     else if(name=="data") {p.drawRoundedRect(QRectF(3,3,18,18),3,3);p.drawLine(7,16,7,12);p.drawLine(12,16,12,7);p.drawLine(17,16,17,10);}
     else if(name=="network") {p.drawEllipse(QPointF(12,5),3,3);p.drawEllipse(QPointF(5,19),3,3);p.drawEllipse(QPointF(19,19),3,3);p.drawLine(10,8,6,16);p.drawLine(14,8,18,16);p.drawLine(8,19,16,19);}
+    else if(name=="qr") {p.drawRect(QRectF(3,3,6,6));p.drawRect(QRectF(15,3,6,6));p.drawRect(QRectF(3,15,6,6));p.drawLine(15,15,15,21);p.drawLine(18,15,21,15);p.drawLine(18,18,18,21);p.drawLine(21,18,21,21);}
     else if(name=="search") {p.drawEllipse(QRectF(3,3,12.5,12.5));p.drawLine(QPointF(13,13),QPointF(21,21));}
     else if(name=="exit") {path.moveTo(10,3);path.lineTo(4,3);path.lineTo(4,21);path.lineTo(10,21);path.moveTo(9,12);path.lineTo(22,12);path.moveTo(17,7);path.lineTo(22,12);path.lineTo(17,17);p.drawPath(path);}
     else if(name=="arrow") {p.drawLine(4,12,20,12);p.drawLine(14,6,20,12);p.drawLine(14,18,20,12);}

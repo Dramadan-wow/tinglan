@@ -1,4 +1,5 @@
 #pragma once
+#include <utility>
 #include "AccountManagerHsx.h"
 #include "AdminManagerHsx.h"
 #include "FriendManagerHsx.h"
@@ -44,6 +45,10 @@ public:
     bool connected() const {return remoteClient_.authenticated();}
     void loginRemote(const QString& nickname,ServiceHsx service,const QString& password,bool registration=false);
     void loginRemoteAdmin(const QString& name,const QString& password);
+    // Sign in by scanning a QR code with the phone app; qrTicket/qrStatus report progress.
+    void loginRemoteQr(ServiceHsx service);
+    // Why the last remote session ended (replaced by another device, ended by the administrator); read once.
+    QString takeEndReason(){return std::exchange(endReason_,{});}
     bool command(const QString& op,QJsonObject arguments,const std::function<void()>& local={},const QString& success={});
     const QJsonArray& feed()const{return feed_;}
     const QJsonObject& social()const{return social_;}
@@ -67,6 +72,8 @@ signals:
     void remoteLoginFinished(bool success);
     void operationRejected(const QJsonObject& request);
     void connectionChanged(const QString& status);
+    void qrTicket(const QString& text,int seconds);
+    void qrStatus(const QString& state);
 private:
     DataStoreHsx data_;
     std::filesystem::path file_;
@@ -85,7 +92,7 @@ private:
     QSet<long long> readPending_;
     QJsonArray feed_;
     QJsonObject social_;
-    QString lastNickname_,connectionStatus_="未连接";
+    QString lastNickname_,connectionStatus_="未连接",endReason_;
     bool legacyAppearanceAttempted_=false;
     bool remoteConfigured_=false,remoteLoginPending_=false,remoteAdmin_=false;
     int user_ = 0;

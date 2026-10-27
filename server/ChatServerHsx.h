@@ -48,7 +48,13 @@ private:
         QJsonObject updateInfo;
         QString fileToken;
         qint64 updateOffset=0;
+        // "desktop" or "mobile": one connection per account and device class. Clients from before 5.7
+        // send no device field and are told "session_revoked", which they already treat as final.
+        QString device,onlineKey,qrCode,qrRequest;
+        bool legacyClient=true,wantsFiles=false;
+        qint64 qrUntil=0;
     };
+    struct Ticket { std::weak_ptr<Peer> peer; int service=0; qint64 expires=0; int scannedBy=0; };
     struct Seen { QByteArray digest; qint64 time; };
     void read(QTcpSocket* socket);
     void handle(const std::shared_ptr<Peer>& peer,const QJsonObject& message);
@@ -59,6 +65,11 @@ private:
     void update(const std::shared_ptr<Peer>& peer,const QJsonObject& message);
     void tick();
     void workspaceLogin(const std::shared_ptr<Peer>&,const QJsonObject&);
+    void tokenLogin(const std::shared_ptr<Peer>&,const QJsonObject&);
+    void admit(const std::shared_ptr<Peer>&,int user,int service,const QString& request,QJsonObject result);
+    bool throttle(const std::shared_ptr<Peer>&,const QString& request);
+    void qrStart(const std::shared_ptr<Peer>&,const QJsonObject&);
+    void qrAction(const std::shared_ptr<Peer>&,const QJsonObject&);
     void synchronize(const std::shared_ptr<Peer>&);
     void sendSnapshot(const std::shared_ptr<Peer>&,const QByteArray&,const QString&,int);
     im::WorkspaceBackendHsx* workspace_=nullptr;
@@ -67,6 +78,7 @@ private:
     QSslConfiguration ssl_;
     QHash<QTcpSocket*,std::shared_ptr<Peer>> peers_;
     QHash<QString,QTcpSocket*> online_;
+    QHash<QString,Ticket> tickets_;
     QHash<QString,Seen> seen_;
     QHash<QString,QPair<qint64,int>> attempts_;
     QElapsedTimer clock_;

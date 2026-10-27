@@ -55,7 +55,16 @@ public final class MainActivity extends Activity {
     private final Map<String,Bitmap> faces=new HashMap<>();
     private String sendRequest="";
     private String lastReadBatch="";
-    @Override public void onCreate(Bundle saved){super.onCreate(saved);prefs=getSharedPreferences("connection",MODE_PRIVATE);service=Math.max(0,Math.min(2,prefs.getInt("service",0)));try{String code=prefs.getString("code","");if(!code.isEmpty())profile=ConnectionProfile.parse(code);}catch(Exception e){profile=null;}showLogin();}
+    private static final int SCAN=11;
+    private CheckBox autoSign;
+    private boolean autoSigning=false;
+    private String scannedCode="";
+    // The private-chat fire buddy floats over the messages; its dragged position survives re-renders.
+    private FireBuddy buddy;
+    private TextView buddyBubble;
+    private float buddyX,buddyY;
+    @Override public void onCreate(Bundle saved){super.onCreate(saved);prefs=getSharedPreferences("connection",MODE_PRIVATE);service=Math.max(0,Math.min(2,prefs.getInt("service",0)));try{String code=prefs.getString("code","");if(!code.isEmpty())profile=ConnectionProfile.parse(code);}catch(Exception e){profile=null;}
+        if(profile!=null&&!prefs.getString("token","").isEmpty())autoLogin();else showLogin();}
     @Override protected void onDestroy(){destroyed=true;if(client!=null)client.close();super.onDestroy();}
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration){
         super.onConfigurationChanged(configuration);
@@ -197,10 +206,11 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams artSize=new LinearLayout.LayoutParams(wide?0:-1,-2,wide?1:0);if(wide)artSize.rightMargin=dp(28);host.addView(art,artSize);
         LinearLayout form=column();if(!wide)gap(form,18);LinearLayout card=card(form);card.addView(text(register?"开启新的相遇":"欢迎回来",23,INK,true));gap(card,5);card.addView(text(service==2?"伊冯灵感 · 记录属于你的频率":"选择服务，继续你的云端会话。",12,MUTED,false));gap(card,20);serviceStrip(card,true);gap(card,21);
         nickname=input("注册时的昵称",false);nickname.setText(prefs.getString("nickname",""));password=input(register?"设置至少 12 字节的密码":"输入账号密码",true);field(card,"昵称",nickname);field(card,"密码",password);
-        loginButton=button(register?"创建账号并登录":"进入听澜  →",true,this::login);card.addView(loginButton,new LinearLayout.LayoutParams(-1,dp(50)));gap(card,10);
+        autoSign=new CheckBox(this);autoSign.setText("下次打开自动登录");autoSign.setTextSize(13);autoSign.setTextColor(MUTED);autoSign.setButtonTintList(android.content.res.ColorStateList.valueOf(GREEN));autoSign.setChecked(prefs.getBoolean("autoLogin",true));card.addView(autoSign);gap(card,10);
+        loginButton=button(autoSigning?"取消自动登录":register?"创建账号并登录":"进入听澜  →",!autoSigning,autoSigning?this::cancelAutoLogin:this::login);card.addView(loginButton,new LinearLayout.LayoutParams(-1,dp(50)));gap(card,10);
         TextView mode=text(register?"已有账号？  返回登录":"还没有账号？  创建账号",13,GREEN,true);mode.setGravity(Gravity.CENTER);mode.setPadding(0,dp(10),0,dp(6));mode.setOnClickListener(v->{if(!connecting){prefs.edit().putString("nickname",nickname.getText().toString().trim()).apply();register=!register;showLogin();}});card.addView(mode);
-        status=text(connecting?connectionState:profile==null?"尚未设置服务器 · 点击右上角连接":"已保存服务器 · "+profile.host,11,MUTED,false);status.setGravity(Gravity.CENTER);form.addView(status);gap(form,10);TextView privacy=text("密码只用于本次云端认证，不保存到平板。",11,MUTED,false);privacy.setGravity(Gravity.CENTER);form.addView(privacy);host.addView(form,new LinearLayout.LayoutParams(wide?0:-1,-2,wide?1:0));
-        loginButton.setEnabled(!connecting);nickname.setEnabled(!connecting);password.setEnabled(!connecting);
+        status=text(connecting?connectionState:profile==null?"尚未设置服务器 · 点击右上角连接":"已保存服务器 · "+profile.host,11,MUTED,false);status.setGravity(Gravity.CENTER);form.addView(status);gap(form,10);TextView privacy=text("密码只用于本次云端认证，不保存到手机。自动登录只保存一个可吊销的登录凭证，退出账号或修改密码后失效。",11,MUTED,false);privacy.setGravity(Gravity.CENTER);form.addView(privacy);host.addView(form,new LinearLayout.LayoutParams(wide?0:-1,-2,wide?1:0));
+        loginButton.setEnabled(!connecting||autoSigning);nickname.setEnabled(!connecting);password.setEnabled(!connecting);autoSign.setEnabled(!connecting);
     }
     private void connectionDialog(){
         if(connecting||workspace!=null){toast("请先退出账号再更换服务器");return;}
@@ -209,23 +219,41 @@ public final class MainActivity extends Activity {
         gap(c,8);c.addView(button("从剪贴板粘贴",false,()->{ClipboardManager clipboard=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);if(clipboard.hasPrimaryClip()){ClipData clip=clipboard.getPrimaryClip();if(clip!=null&&clip.getItemCount()>0)code.setText(clip.getItemAt(0).coerceToText(this));}}));
         if(profile!=null){gap(c,10);c.addView(text("当前："+profile.host+":"+profile.port+"\nCA SHA-256："+profile.fingerprint,11,MUTED,false));}
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("服务器连接").setView(c).setNegativeButton("取消",null).setPositiveButton("检查连接码",null).create();
-        dialog.setOnShowListener(d->dialog.getButton(-1).setOnClickListener(v->{try{String raw=code.getText().toString().trim();ConnectionProfile parsed=ConnectionProfile.parse(raw);new AlertDialog.Builder(this).setTitle("确认服务器与证书").setMessage(parsed.host+":"+parsed.port+"\n\nCA SHA-256\n"+parsed.fingerprint+"\n\n请确认连接码来自你的服务器维护者。").setNegativeButton("取消",null).setPositiveButton("信任并保存",(d2,w)->{profile=parsed;prefs.edit().putString("code",raw).apply();dialog.dismiss();showLogin();}).show();}catch(Exception e){toast(e.getMessage());}}));dialog.show();
+        dialog.setOnShowListener(d->dialog.getButton(-1).setOnClickListener(v->{try{String raw=code.getText().toString().trim();ConnectionProfile parsed=ConnectionProfile.parse(raw);new AlertDialog.Builder(this).setTitle("确认服务器与证书").setMessage(parsed.host+":"+parsed.port+"\n\nCA SHA-256\n"+parsed.fingerprint+"\n\n请确认连接码来自你的服务器维护者。").setNegativeButton("取消",null).setPositiveButton("信任并保存",(d2,w)->{profile=parsed;prefs.edit().putString("code",raw).remove("token").remove("tokenService").apply();dialog.dismiss();showLogin();}).show();}catch(Exception e){toast(e.getMessage());}}));dialog.show();
     }
     private void login(){
         if(profile==null){connectionDialog();return;}String nick=nickname.getText().toString().trim(),secret=password.getText().toString();int bytes=secret.getBytes(StandardCharsets.UTF_8).length;
         if(nick.isEmpty()||nick.getBytes(StandardCharsets.UTF_8).length>60||bytes<1||bytes>128||(register&&bytes<12)){toast(register?"昵称不能为空，密码需为 12–128 字节":"请输入昵称和密码（密码最多 128 字节）");return;}
-        prefs.edit().putString("nickname",nick).putInt("service",service).apply();connecting=true;password.setText("");nickname.setEnabled(false);password.setEnabled(false);loginButton.setEnabled(false);
+        boolean remember=autoSign==null||autoSign.isChecked();SharedPreferences.Editor edit=prefs.edit().putString("nickname",nick).putInt("service",service).putBoolean("autoLogin",remember);if(!remember)edit.remove("token").remove("tokenService");edit.apply();
+        connecting=true;password.setText("");nickname.setEnabled(false);password.setEnabled(false);loginButton.setEnabled(false);autoSign.setEnabled(false);
+        start(nick,secret,"",remember);
+    }
+    /** Sign in with the token saved by an earlier "下次打开自动登录"; the password is never stored. */
+    private void autoLogin(){
+        service=Math.max(0,Math.min(2,prefs.getInt("tokenService",service)));connecting=true;autoSigning=true;connectionState="正在自动登录…";showLogin();
+        start(prefs.getString("nickname",""),"",prefs.getString("token",""),true);
+    }
+    private void cancelAutoLogin(){if(client!=null){client.close();client=null;}connecting=false;autoSigning=false;connectionState="已取消自动登录";showLogin();}
+    private void start(String nick,String secret,String token,boolean remember){
         final ChatClient[] holder=new ChatClient[1];
-        ChatClient next=new ChatClient(profile,nick,secret,service,register,new ChatClient.Listener(){
+        ChatClient next=new ChatClient(profile,nick,secret,token,service,register,remember,new ChatClient.Listener(){
             private void ui(Runnable r){runOnUiThread(()->{if(!destroyed&&client==holder[0])r.run();});}
             public void state(String detail,boolean online){ui(()->{connectionState=detail;if(status!=null)status.setText(detail);enableSend(online&&!sending);});}
-            public void snapshot(JSONObject data){ui(()->{try{boolean first=workspace==null;int position=scroll==null?0:scroll.getScrollY();workspace=new Workspace(data);connecting=false;register=false;if(first){tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;}String name=workspace.name(workspace.viewer);prefs.edit().putString("nickname",name).apply();if(workspace.account(workspace.viewer,service).length()==0){JSONArray all=workspace.users.get(workspace.viewer).getJSONArray("services");service=all.getJSONObject(0).getInt("type");}
+            public void token(String value,int signedService){ui(()->prefs.edit().putString("token",value).putInt("tokenService",signedService).apply());}
+            public void signedOut(){ui(()->prefs.edit().remove("token").remove("tokenService").apply());}
+            public void qr(JSONObject result){ui(()->qrAnswer(result));}
+            public void snapshot(JSONObject data){ui(()->{try{boolean first=workspace==null;int position=scroll==null?0:scroll.getScrollY();workspace=new Workspace(data);connecting=false;autoSigning=false;register=false;if(first){tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;}String name=workspace.name(workspace.viewer);prefs.edit().putString("nickname",name).apply();if(workspace.account(workspace.viewer,service).length()==0){JSONArray all=workspace.users.get(workspace.viewer).getJSONArray("services");service=all.getJSONObject(0).getInt("type");}
                 if(chatKind>=0){if(conversationPane!=null)fillConversations(conversationPane,conversationQuery);renderMessages();}else{showHome();if(!first)scroll.post(()->scroll.scrollTo(0,position));}}catch(Exception e){logout();toast("同步失败："+e.getMessage());}});}
             public void result(String id,JSONObject result){ui(()->{Runnable done=completions.remove(id);if(done!=null)done.run();Runnable good=successes.remove(id);if(result.optBoolean("ok")){if(good!=null)good.run();}else toast(result.optString("detail","服务器拒绝操作"));});}
             public void failure(String detail,boolean terminal){ui(()->{if(terminal){logout();new AlertDialog.Builder(MainActivity.this).setTitle("连接未完成").setMessage(detail).setPositiveButton("知道了",null).show();}else toast(detail);});}
         });holder[0]=next;client=next;next.start();
     }
-    private void logout(){if(client!=null){client.close();client=null;}workspace=null;connecting=false;sending=false;chatKind=-1;sendRequest="";composer=null;sendButton=null;conversationPane=null;faces.clear();successes.clear();completions.clear();showLogin();}
+    /** 退出账号: the server forgets this phone's automatic sign-in before the connection closes. */
+    private void signOut(){
+        prefs.edit().remove("token").remove("tokenService").apply();ChatClient leaving=client;client=null;
+        if(leaving!=null){leaving.signOut();new android.os.Handler(getMainLooper()).postDelayed(leaving::close,3000);}logout();
+    }
+    private void logout(){if(client!=null){client.close();client=null;}workspace=null;connecting=false;autoSigning=false;sending=false;buddy=null;buddyBubble=null;chatKind=-1;sendRequest="";composer=null;sendButton=null;conversationPane=null;faces.clear();successes.clear();completions.clear();showLogin();}
     private String command(JSONObject data,Runnable good,Runnable done){try{if(client==null)throw new IllegalStateException("请先登录");String id=client.command(data);if(good!=null)successes.put(id,good);if(done!=null)completions.put(id,done);return id;}catch(Exception e){toast(e.getMessage());if(done!=null)done.run();return "";}}
     private void command(JSONObject data){command(data,null,null);}
 
@@ -246,6 +274,7 @@ public final class MainActivity extends Activity {
         if(!big){View me=avatarUser(workspace.viewer,40);me.setContentDescription("我的资料");me.setOnClickListener(v->{if(service==2){tab=MINE;showHome();}else go(MINE);});LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(dp(40),dp(40));size.rightMargin=dp(12);bar.addView(me,size);}
         LinearLayout labels=column();labels.addView(line(h[0],big?24:21,INK,true));labels.addView(line(h[1],big?12:11,MUTED,false));bar.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
         int actions=0;
+        if(service!=2&&tab==CHATS){bar.addView(iconAction("scan","扫一扫登录电脑",this::scan));actions++;}
         if(service!=2&&tab!=NOTICES){bar.addView(bellAction());actions++;}
         if(service!=2&&(tab==FRIENDS||tab==CHATS)){bar.addView(iconAction("plus","添加好友",this::addFriend));actions++;}
         else if(service!=2&&tab==GROUPS){bar.addView(iconAction("plus","创建群聊",this::createGroup));actions++;}
@@ -372,7 +401,100 @@ public final class MainActivity extends Activity {
         if(pane){View rule=new View(this);rule.setBackgroundColor(LINE);parent.addView(rule,new LinearLayout.LayoutParams(-1,dp(1)));}
     }
     private void messageArea(LinearLayout parent){
-        scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setVerticalScrollBarEnabled(false);chatMessages=column();boolean pane=wide();chatMessages.setPadding(pane?dp(18):dp(2),dp(12),pane?dp(18):dp(2),dp(12));scroll.addView(chatMessages);parent.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setVerticalScrollBarEnabled(false);chatMessages=column();boolean pane=wide();chatMessages.setPadding(pane?dp(18):dp(2),dp(12),pane?dp(18):dp(2),dp(12));scroll.addView(chatMessages);
+        buddy=null;buddyBubble=null;
+        if(chatKind!=0){parent.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));return;}
+        FrameLayout stage=new FrameLayout(this);stage.addView(scroll,new FrameLayout.LayoutParams(-1,-1));buddyStage(stage);parent.addView(stage,new LinearLayout.LayoutParams(-1,0,1));
+    }
+    /** Desktop floating buddy: hovers at the lower right of the messages, can be dragged, a tap says hello, a long press opens the shared wardrobe. */
+    private void buddyStage(FrameLayout stage){
+        buddyBubble=text("",12,0xff5b4334,false);buddyBubble.setPadding(dp(14),dp(9),dp(14),dp(9));buddyBubble.setMaxWidth(dp(210));buddyBubble.setBackground(outline(0xf5ffffff,16));buddyBubble.setElevation(dp(2));buddyBubble.setVisibility(View.GONE);
+        FrameLayout.LayoutParams at=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.END);at.rightMargin=dp(96);at.bottomMargin=dp(46);stage.addView(buddyBubble,at);
+        buddy=new FireBuddy(this,false);FrameLayout.LayoutParams size=new FrameLayout.LayoutParams(dp(92),dp(104),Gravity.BOTTOM|Gravity.END);size.rightMargin=dp(8);size.bottomMargin=dp(6);stage.addView(buddy,size);
+        buddy.setTranslationX(buddyX);buddy.setTranslationY(buddyY);buddyBubble.setTranslationX(buddyX);buddyBubble.setTranslationY(buddyY);
+        final float slop=android.view.ViewConfiguration.get(this).getScaledTouchSlop();final float[] start=new float[4];final boolean[] moved={false};final int friend=chatTarget;
+        final Runnable hold=()->{moved[0]=true;wardrobe(friend);};
+        buddy.setOnTouchListener((v,e)->{
+            switch(e.getActionMasked()){
+                case android.view.MotionEvent.ACTION_DOWN:start[0]=e.getRawX();start[1]=e.getRawY();start[2]=v.getTranslationX();start[3]=v.getTranslationY();moved[0]=false;v.postDelayed(hold,550);return true;
+                case android.view.MotionEvent.ACTION_MOVE:{float dx=e.getRawX()-start[0],dy=e.getRawY()-start[1];if(!moved[0]&&Math.hypot(dx,dy)<slop)return true;if(!moved[0]){moved[0]=true;v.removeCallbacks(hold);}
+                    // Keep the buddy inside the message area.
+                    float x=Math.max(-(stage.getWidth()-v.getWidth()-dp(16)),Math.min(0,start[2]+dx)),y=Math.max(-(stage.getHeight()-v.getHeight()-dp(12)),Math.min(0,start[3]+dy));
+                    v.setTranslationX(x);v.setTranslationY(y);buddyBubble.setTranslationX(x);buddyBubble.setTranslationY(y);buddyX=x;buddyY=y;return true;}
+                case android.view.MotionEvent.ACTION_UP:v.removeCallbacks(hold);if(!moved[0])greet();return true;
+                case android.view.MotionEvent.ACTION_CANCEL:v.removeCallbacks(hold);return true;
+                default:return false;
+            }
+        });
+        updateBuddy();
+    }
+    private int greetings=0;
+    private void greet(){
+        if(buddy==null||buddyBubble==null)return;String[] lines={"在呢，今天也要好好聊天！","被你戳到啦～","一起把今天的火苗点亮吧"};
+        String detail=buddy.days()>0?"连续 "+buddy.days()+" 天 · Lv."+buddy.level()+" · "+FireBuddy.status(buddy.today()):FireBuddy.status(buddy.today());
+        buddyBubble.setText(lines[greetings++%lines.length]+"\n"+detail+"\n长按小火人可以换装");buddyBubble.setVisibility(View.VISIBLE);
+        buddyBubble.removeCallbacks(hideBubble);buddyBubble.postDelayed(hideBubble,3600);
+    }
+    private final Runnable hideBubble=()->{if(buddyBubble!=null)buddyBubble.setVisibility(View.GONE);};
+    private JSONObject buddyLook(int friend){JSONObject all=workspace.raw.optJSONObject("buddies");JSONObject look=all==null?null:all.optJSONObject(String.valueOf(friend));return look==null?new JSONObject():look;}
+    private void updateBuddy(){
+        if(buddy==null||workspace==null||chatKind!=0)return;JSONObject look=buddyLook(chatTarget);
+        buddy.setLook(FireBuddy.find(FireBuddy.PETS,look.optString("pet")),FireBuddy.find(FireBuddy.OUTFITS,look.optString("outfit")));buddy.setState(FireBuddy.streak(workspace,service,chatTarget));
+    }
+    private int memberTier(){JSONObject m=workspace.raw.optJSONObject("membership");return m==null?0:m.optInt("tier");}
+    /** Wardrobe for the buddy shared with one friend: either side may dress it and both see the change. */
+    private void wardrobe(int friend){
+        if(workspace==null)return;JSONObject look=buddyLook(friend);final FireBuddy.Style skin=FireBuddy.find(FireBuddy.PETS,look.optString("pet")),wear=FireBuddy.find(FireBuddy.OUTFITS,look.optString("outfit"));final int tier=memberTier();
+        LinearLayout content=column();content.setPadding(dp(20),dp(6),dp(20),dp(4));
+        FireBuddy preview=new FireBuddy(this,true);preview.setLook(skin,wear);LinearLayout.LayoutParams big=new LinearLayout.LayoutParams(dp(96),dp(110));big.gravity=Gravity.CENTER_HORIZONTAL;content.addView(preview,big);
+        TextView note=text("你和 "+workspace.display(friend,service)+" 共用这只小火人，换装后对方会同时看到。会员款需开通相应会员。",12,MUTED,false);note.setGravity(Gravity.CENTER);content.addView(note);gap(content,10);
+        final AlertDialog[] dialog=new AlertDialog[1];
+        for(int kind=0;kind<2;kind++){
+            final boolean pets=kind==0;section(content,pets?"皮肤":"服装",-1);FireBuddy.Style[] all=pets?FireBuddy.PETS:FireBuddy.OUTFITS;LinearLayout line=null;
+            for(int i=0;i<all.length;i++){
+                if(i%3==0){line=row();line.setGravity(Gravity.TOP);content.addView(line);}final FireBuddy.Style item=all[i];boolean current=item==(pets?skin:wear),locked=item.tier>tier;
+                LinearLayout cell=column();cell.setGravity(Gravity.CENTER_HORIZONTAL);cell.setPadding(dp(4),dp(8),dp(4),dp(8));cell.setBackground(UiKit.touch(current?palette.soft:palette.surface,GREEN,14,density()));
+                FireBuddy sample=new FireBuddy(this,true);sample.setLook(pets?item:skin,pets?wear:item);cell.addView(sample,new LinearLayout.LayoutParams(dp(56),dp(64)));
+                TextView name=line(item.name,12,INK,current);name.setGravity(Gravity.CENTER);cell.addView(name,new LinearLayout.LayoutParams(-1,-2));
+                TextView state=line(current?"正在使用":locked?FireBuddy.TIERS[item.tier]+"会员":"免费",10,current?GREEN:MUTED,current);state.setGravity(Gravity.CENTER);cell.addView(state,new LinearLayout.LayoutParams(-1,-2));
+                cell.setContentDescription(item.name+"，"+(current?"正在使用":locked?"需要"+FireBuddy.TIERS[item.tier]+"会员":"可以换上"));
+                cell.setOnClickListener(v->{
+                    if(locked){toast("开通"+FireBuddy.TIERS[item.tier]+"会员后可以换上「"+item.name+"」");return;}if(current){toast("小火人已经穿着「"+item.name+"」");return;}
+                    JSONObject profile=Wire.obj(pets?"pet":"outfit",item.id);command(Wire.obj("op","buddy.update","target",friend,"profile",profile),()->toast("小火人换上了「"+item.name+"」，好友那边也同步了"),null);if(dialog[0]!=null)dialog[0].dismiss();
+                });
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(dp(3),dp(3),dp(3),dp(3));line.addView(cell,lp);
+            }
+            if(all.length%3!=0)for(int k=all.length%3;k<3;k++)line.addView(new Space(this),new LinearLayout.LayoutParams(0,1,1));
+            gap(content,6);
+        }
+        ScrollView s=new ScrollView(this);s.addView(content);dialog[0]=new AlertDialog.Builder(this).setTitle("小火人衣橱").setView(s).setPositiveButton("完成",null).show();
+    }
+    /** Pick a friend, then dress the buddy you share. */
+    private void chooseWardrobe(){
+        JSONArray friends=workspace.account(workspace.viewer,service).optJSONArray("friends");if(friends==null||friends.length()==0){toast("添加好友后，就能和好友一起给小火人换装");return;}
+        String[] names=new String[friends.length()];int[] ids=new int[friends.length()];for(int i=0;i<friends.length();i++){ids[i]=friends.optJSONObject(i).optInt("id");names[i]=workspace.display(ids[i],service);}
+        new AlertDialog.Builder(this).setTitle("和谁的小火人").setItems(names,(d,w)->wardrobe(ids[w])).show();
+    }
+    /** 扫一扫: scan the sign-in QR code shown by the desktop client, then confirm on this phone. */
+    private void scan(){
+        if(!online()){toast("连接服务器后才能扫码登录电脑");return;}
+        startActivityForResult(new android.content.Intent(this,ScanActivity.class),SCAN);
+    }
+    @Override protected void onActivityResult(int request,int result,android.content.Intent data){
+        super.onActivityResult(request,result,data);if(request!=SCAN||result!=RESULT_OK||data==null)return;String text=data.getStringExtra(ScanActivity.RESULT);
+        if(text==null||!text.matches("TINGLANQR1:[0-9a-f]{32}")){toast("这不是听澜电脑端的登录二维码");return;}
+        scannedCode=text.substring(11);try{client.qr("qr_scan",scannedCode,false);}catch(Exception e){toast(e.getMessage());}
+    }
+    private void qrAnswer(JSONObject r){
+        if(!r.optBoolean("ok")){new AlertDialog.Builder(this).setTitle("电脑登录未完成").setMessage(r.optString("detail","二维码已失效，请在电脑上刷新")).setPositiveButton("知道了",null).show();return;}
+        String stage=r.optString("stage");final String code=scannedCode;
+        if(stage.equals("scan")){
+            int svc=Math.max(0,Math.min(2,r.optInt("service")));String address=r.optString("address");
+            new AlertDialog.Builder(this).setTitle("登录电脑端听澜？").setMessage("将以「"+workspace.name(workspace.viewer)+"」的"+SERVICES[svc]+"账号登录这台电脑。"+(address.isEmpty()?"":"\n电脑网络地址："+address)+"\n\n手机会保持登录。如果不是你本人在电脑前操作，请点「取消」。").setCancelable(false)
+                .setPositiveButton("确认登录",(d,w)->{try{client.qr("qr_confirm",code,true);}catch(Exception e){toast(e.getMessage());}})
+                .setNegativeButton("取消",(d,w)->{try{client.qr("qr_confirm",code,false);}catch(Exception e){toast(e.getMessage());}}).show();
+        }else if(stage.equals("confirm"))toast("电脑端已登录");
+        else if(stage.equals("cancel"))toast("已取消电脑登录");
     }
     /** Desktop composer: emoji button, rounded input and a round send button. */
     private void composer(LinearLayout parent,String hint){
@@ -419,7 +541,7 @@ public final class MainActivity extends Activity {
             String extra=(Workspace.contains(m.optJSONArray("stars"),workspace.viewer)?"  · 收藏":"")+(own&&chatKind==0&&!recalled?(Workspace.contains(m.optJSONArray("read"),chatTarget)?"  · 已读":"  · 未读"):"");
             TextView bubble=messageRow(chatMessages,sender,own,recalled?"消息已撤回":m.optString("text"),m.optLong("created"),extra,recalled);bubble.setOnLongClickListener(v->{messageActions(m);return true;});
             if(!own&&!recalled&&!Workspace.contains(m.optJSONArray("read"),workspace.viewer))unread.put(m.optString("id"));}
-        if(all.isEmpty())note(chatMessages,"还没有消息，发送第一句问候吧。");
+        if(all.isEmpty())note(chatMessages,"还没有消息，发送第一句问候吧。");updateBuddy();
         if(nearBottom||all.size()<5)scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));String batch=unread.toString();if(unread.length()>0&&!batch.equals(lastReadBatch)&&client!=null&&client.isOnline()){lastReadBatch=batch;command(Wire.obj("op","chat.read","messages",unread));}
     }
     private void send(){
@@ -492,8 +614,11 @@ public final class MainActivity extends Activity {
             LinearLayout entry=row();entry.setPadding(dp(12),dp(10),dp(12),dp(10));entry.setBackground(bg(current?palette.soft:BG,12));entry.addView(text(SERVICES[type],14,INK,true),new LinearLayout.LayoutParams(dp(54),-2));entry.addView(line(s.optString("number")+" · "+s.optString("nick"),12,MUTED,false),new LinearLayout.LayoutParams(0,-2,1));entry.addView(text(current?"使用中":relation,11,current?GREEN:MUTED,current));
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(6);c.addView(entry,lp);}
         gap(c,8);c.addView(button("切换已开通服务",false,()->{List<Integer> types=new ArrayList<>();List<String> names=new ArrayList<>();for(int s=0;s<3;s++)if(workspace.account(workspace.viewer,s).length()>0){types.add(s);names.add(SERVICES[s]);}new AlertDialog.Builder(this).setTitle("切换服务视图").setItems(names.toArray(new String[0]),(d,w)->{service=types.get(w);tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;prefs.edit().putInt("service",service).apply();showHome();}).show();}));
-        if(workspace.account(workspace.viewer,2).length()==0){body.addView(button("开通微博 · 伊冯灵感空间",true,this::openWeiboService));gap(body,12);}LinearLayout settings=card(body);settings.addView(button("编辑个人资料",false,()->askText("个人资料","昵称",workspace.name(workspace.viewer),name->askText("个人资料","所在地",workspace.users.get(workspace.viewer).optString("location"),location->command(Wire.obj("op","profile","name",name,"location",location))))));gap(settings,8);settings.addView(button("我的收藏",false,this::favorites));gap(settings,8);settings.addView(button("服务器与连接",false,()->new AlertDialog.Builder(this).setTitle("当前服务器").setMessage(profile.host+":"+profile.port+"\n\nTLS 1.2 / 1.3 · 严格校验证书\n\nCA SHA-256\n"+profile.fingerprint+"\n\n切换服务器请先退出登录。密码不会保存在手机存储中。").setPositiveButton("知道了",null).show()));
-        LinearLayout about=card(body);about.addView(text("听澜 Android 1.2.0",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信；平板使用与电脑端相同的侧边栏和双栏会话。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。\n同一账号当前只能在一台设备登录。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->logout()).show()));
+        if(workspace.account(workspace.viewer,2).length()==0){body.addView(button("开通微博 · 伊冯灵感空间",true,this::openWeiboService));gap(body,12);}
+        LinearLayout tools=row();tools.addView(tile("scan","扫一扫","扫码登录电脑端",this::scan),new LinearLayout.LayoutParams(0,-2,1));LinearLayout.LayoutParams second=new LinearLayout.LayoutParams(0,-2,1);second.leftMargin=dp(8);
+        tools.addView(tile("flame","小火人衣橱","和好友一起换装",this::chooseWardrobe),second);body.addView(tools);gap(body,12);
+        LinearLayout settings=card(body);settings.addView(button("编辑个人资料",false,()->askText("个人资料","昵称",workspace.name(workspace.viewer),name->askText("个人资料","所在地",workspace.users.get(workspace.viewer).optString("location"),location->command(Wire.obj("op","profile","name",name,"location",location))))));gap(settings,8);settings.addView(button("我的收藏",false,this::favorites));gap(settings,8);settings.addView(button("服务器与连接",false,()->new AlertDialog.Builder(this).setTitle("当前服务器").setMessage(profile.host+":"+profile.port+"\n\nTLS 1.2 / 1.3 · 严格校验证书\n\nCA SHA-256\n"+profile.fingerprint+"\n\n切换服务器请先退出登录。密码不会保存在手机存储中；自动登录只保存可吊销的登录凭证。").setPositiveButton("知道了",null).show()));
+        LinearLayout about=card(body);about.addView(text("听澜 Android 1.3.0",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信、聊天小火人与衣橱；平板使用与电脑端相同的侧边栏和双栏会话。\n电脑和手机可以同时登录；同一账号在另一部手机登录时，本机会自动下线。可用「扫一扫」登录电脑端。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留。退出后本机的自动登录失效，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->signOut()).show()));
     }
     private void favorites(){LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);JSONArray list=workspace.array("messages");int count=0;for(int i=0;i<list.length();i++){JSONObject m=list.optJSONObject(i);if(m!=null&&!m.optBoolean("recalled")&&Workspace.contains(m.optJSONArray("stars"),workspace.viewer)){count++;LinearLayout c=card(content);c.addView(text(workspace.name(m.optInt("sender"))+" · "+clock(m.optLong("created")),12,MUTED,false));c.addView(text(m.optString("text"),16,INK,false));}}if(count==0)content.addView(text("长按聊天消息即可收藏",15,MUTED,false));ScrollView sc=new ScrollView(this);sc.addView(content);new AlertDialog.Builder(this).setTitle("我的收藏").setView(sc).setPositiveButton("关闭",null).show();}
     private void askText(String title,String hint,String current,TextAction action){LinearLayout c=column();c.setPadding(dp(22),dp(12),dp(22),0);EditText e=input(hint,false);e.setText(current);e.setSingleLine(false);e.setMaxLines(5);e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);c.addView(e);AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(c).setNegativeButton("取消",null).setPositiveButton("提交",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String value=e.getText().toString().trim();if(value.isEmpty()){toast("请输入内容");return;}action.accept(value);d.dismiss();}));d.show();}

@@ -28,6 +28,12 @@ void SocialStoreHsx::migrate(){
         if(populated){const auto backup=db_.databaseName()+".before-appearance-v5.4.sqlite";
             if(!QFileInfo::exists(backup))query(db_,"VACUUM INTO ?",{backup});}
     }
+    // 5.7 adds shared fire buddies and sign-in tokens; keep a copy of the database from before those tables.
+    if(!db_.tables().contains("buddies")){
+        auto existing=query(db_,"SELECT COUNT(*) FROM state");existing.next();const bool populated=existing.value(0).toInt()>0;existing.finish();
+        if(populated){const auto backup=db_.databaseName()+".before-v5.7.sqlite";
+            if(!QFileInfo::exists(backup))query(db_,"VACUUM INTO ?",{backup});}
+    }
     const auto columns=db_.record("posts");
     if(!columns.contains("channel")){const auto backup=db_.databaseName()+".before-social-v5.sqlite";if(!QFileInfo::exists(backup))query(db_,"VACUUM INTO ?",{backup});}
     if(!columns.contains("channel"))query(db_,"ALTER TABLE posts ADD COLUMN channel TEXT NOT NULL DEFAULT 'moments'");
@@ -41,7 +47,9 @@ void SocialStoreHsx::migrate(){
         "CREATE TABLE IF NOT EXISTS appearances(actor INTEGER PRIMARY KEY,profile BLOB NOT NULL)",
         "CREATE TABLE IF NOT EXISTS membership_orders(id TEXT PRIMARY KEY,actor INTEGER,tier INTEGER,price INTEGER,reference TEXT,status TEXT,created INTEGER,note TEXT DEFAULT '')",
         "CREATE UNIQUE INDEX IF NOT EXISTS one_pending_order ON membership_orders(actor) WHERE status='pending'",
-        "CREATE UNIQUE INDEX IF NOT EXISTS one_payment_reference ON membership_orders(note) WHERE status='approved'"
+        "CREATE UNIQUE INDEX IF NOT EXISTS one_payment_reference ON membership_orders(note) WHERE status='approved'",
+        "CREATE TABLE IF NOT EXISTS buddies(low INTEGER,high INTEGER,profile BLOB NOT NULL,PRIMARY KEY(low,high))",
+        "CREATE TABLE IF NOT EXISTS device_tokens(digest TEXT PRIMARY KEY,actor INTEGER NOT NULL,service INTEGER NOT NULL,device TEXT NOT NULL,credential TEXT NOT NULL,lifetime INTEGER NOT NULL,expires INTEGER NOT NULL,created INTEGER NOT NULL)"
     })query(db_,sql);
     if(!db_.record("membership_orders").contains("reviewer"))query(db_,"ALTER TABLE membership_orders ADD COLUMN reviewer TEXT DEFAULT ''");
     if(!db_.record("membership_orders").contains("reviewed"))query(db_,"ALTER TABLE membership_orders ADD COLUMN reviewed INTEGER DEFAULT 0");
@@ -93,13 +101,27 @@ QJsonObject SocialStoreHsx::appearances()const{
         p["tier"]=tier;out[QString::number(actor)]=p;
     }return out;
 }
+QJsonObject SocialStoreHsx::buddies(int actor)const{
+    // One fire buddy per pair of friends, keyed by the other friend's id in each viewer's snapshot.
+    QJsonObject out;auto q=query(db_,"SELECT low,high,profile FROM buddies WHERE low=? OR high=?",{actor,actor});
+    while(q.next()){
+        const int other=q.value(0).toInt()==actor?q.value(1).toInt():q.value(0).toInt();if(!data_.users().count(other))continue;
+        const auto p=QJsonDocument::fromJson(q.value(2).toByteArray()).object();QJsonObject look;
+        for(const QString kind:{"pet","outfit"}){
+            // A member item stays while the friend who chose it still holds the tier it needs.
+            const auto chosen=AppearanceHsx::item(kind,p[kind].toString());
+            look[kind]=!chosen.isEmpty()&&chosen["tier"].toInt()<=member(p[kind+"By"].toInt())["tier"].toInt()?p[kind]:AppearanceHsx::catalog(kind).first().toObject()["id"];
+        }
+        out[QString::number(other)]=look;
+    }return out;
+}
 QJsonObject SocialStoreHsx::snapshot(int actor)const{
     QJsonArray follows,blocks,dms;auto f=query(db_,"SELECT target FROM follows WHERE actor=?",{actor});while(f.next())follows.append(f.value(0).toInt());
     auto b=query(db_,"SELECT target FROM social_blocks WHERE actor=?",{actor});while(b.next())blocks.append(b.value(0).toInt());
     auto q=query(db_,"SELECT id,sender,recipient,post,text,created,is_read FROM direct_messages WHERE sender=? OR recipient=? ORDER BY id DESC LIMIT 200",{actor,actor});
     while(q.next())dms.append(QJsonObject{{"id",q.value(0).toString()},{"sender",q.value(1).toInt()},{"recipient",q.value(2).toInt()},{"post",q.value(3).toString()},{"text",q.value(4).toString()},{"created",q.value(5).toLongLong()},{"read",q.value(6).toBool()}});
     const bool enabled=hasWeibo(actor);
-    return {{"appearances",appearances()},{"feed",posts(actor,"moments")},{"weibo",enabled?posts(actor,"weibo"):QJsonArray{}},{"follows",enabled?follows:QJsonArray{}},{"socialBlocks",enabled?blocks:QJsonArray{}},{"directMessages",enabled?dms:QJsonArray{}},{"membership",member(actor)},{"membershipOrders",orders(actor)}};
+    return {{"appearances",appearances()},{"buddies",buddies(actor)},{"feed",posts(actor,"moments")},{"weibo",enabled?posts(actor,"weibo"):QJsonArray{}},{"follows",enabled?follows:QJsonArray{}},{"socialBlocks",enabled?blocks:QJsonArray{}},{"directMessages",enabled?dms:QJsonArray{}},{"membership",member(actor)},{"membershipOrders",orders(actor)}};
 }
 bool SocialStoreHsx::command(int actor,const QJsonObject& a,QJsonObject& result){
     const auto op=a["op"].toString();const auto now=QDateTime::currentSecsSinceEpoch();
@@ -128,6 +150,20 @@ bool SocialStoreHsx::command(int actor,const QJsonObject& a,QJsonObject& result)
         }
         // actor is bound to the authenticated connection; no target/sender ID is trusted.
         query(db_,"INSERT INTO appearances(actor,profile) VALUES(?,?) ON CONFLICT(actor) DO UPDATE SET profile=excluded.profile",{actor,QJsonDocument(p).toJson(QJsonDocument::Compact)});return true;
+    }
+    if(op=="buddy.update"){
+        const int target=a["target"].toInt();require(target!=actor&&data_.users().count(target)&&friends(actor,target),"只能和好友一起给小火人换装");
+        const auto patch=a["profile"].toObject();require(a["profile"].isObject()&&!patch.isEmpty(),"装扮格式无效");
+        const int low=std::min(actor,target),high=std::max(actor,target);
+        auto q=query(db_,"SELECT profile FROM buddies WHERE low=? AND high=?",{low,high});
+        auto p=q.next()?QJsonDocument::fromJson(q.value(0).toByteArray()).object():QJsonObject{};
+        for(auto it=patch.begin();it!=patch.end();++it){
+            const auto kind=it.key();require((kind=="pet"||kind=="outfit")&&it.value().isString(),"不支持的装扮字段");
+            const auto style=AppearanceHsx::item(kind,it.value().toString());require(!style.isEmpty(),"装扮不存在");
+            require(style["tier"].toInt()<=member(actor)["tier"].toInt(),"此装扮需开通对应会员后使用");
+            p[kind]=it.value();p[kind+"By"]=actor;
+        }
+        query(db_,"INSERT INTO buddies(low,high,profile) VALUES(?,?,?) ON CONFLICT(low,high) DO UPDATE SET profile=excluded.profile",{low,high,QJsonDocument(p).toJson(QJsonDocument::Compact)});return true;
     }
     if(op.startsWith("weibo."))require(hasWeibo(actor),"请先在账号页面开通微博服务");
     if(op=="feed.publish"){

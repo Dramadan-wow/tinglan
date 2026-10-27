@@ -17,6 +17,7 @@
 #include <QJsonArray>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QRegularExpression>
 #include <QUuid>
 #include <limits>
 namespace im {
@@ -104,6 +105,34 @@ QJsonObject WorkspaceBackendHsx::filePermissions(int user){
     }
     return {{"user",user},{"services",services},{"routes",routes}};
 }
+bool WorkspaceBackendHsx::canLogin(int user,ServiceHsx service)const{return activeService(service)&&data_.users().count(user)&&data_.user(user).loginAllowed()&&data_.user(user).services().count(service);}
+namespace {
+QString digest(const QByteArray& value){return QString::fromLatin1(QCryptographicHash::hash(value,QCryptographicHash::Sha256).toHex());}
+bool tokenFormat(const QString& token){static const QRegularExpression hex("^[0-9a-f]{64}$");return hex.match(token).hasMatch();}
+}
+QString WorkspaceBackendHsx::issueToken(int user,ServiceHsx service,const QString& device,qint64 lifetime){
+    require(canLogin(user,service)&&(device=="mobile"||device=="desktop")&&lifetime>0,"无法签发登录令牌");
+    QByteArray secret(32,Qt::Uninitialized);for(auto& byte:secret)byte=char(QRandomGenerator::system()->generate());const auto token=QString::fromLatin1(secret.toHex());
+    const auto now=QDateTime::currentSecsSinceEpoch();QSqlQuery q(db_);
+    q.prepare("DELETE FROM device_tokens WHERE expires<=?");q.addBindValue(now);sql(q);
+    q.prepare("INSERT INTO device_tokens(digest,actor,service,device,credential,lifetime,expires,created) VALUES(?,?,?,?,?,?,?,?)");
+    for(const QVariant& v:QVariantList{digest(token.toLatin1()),user,int(service),device,digest(QByteArray::fromStdString(credential(user,service))),lifetime,now+lifetime,now})q.addBindValue(v);sql(q);
+    // Keep the ten newest devices per account.
+    q.prepare("DELETE FROM device_tokens WHERE actor=? AND digest NOT IN (SELECT digest FROM device_tokens WHERE actor=? ORDER BY created DESC LIMIT 10)");q.addBindValue(user);q.addBindValue(user);sql(q);
+    return token;
+}
+int WorkspaceBackendHsx::redeemToken(const QString& token,int& service,QString& device){
+    if(!tokenFormat(token))return 0;const auto key=digest(token.toLatin1());const auto now=QDateTime::currentSecsSinceEpoch();
+    QSqlQuery q(db_);q.prepare("SELECT actor,service,device,credential,lifetime,expires FROM device_tokens WHERE digest=?");q.addBindValue(key);sql(q);if(!q.next())return 0;
+    const int user=q.value(0).toInt();const auto type=serviceType(q.value(1).toInt());const auto lifetime=q.value(4).toLongLong();const auto kind=q.value(2).toString();
+    const bool valid=q.value(5).toLongLong()>now&&canLogin(user,type)&&q.value(3).toString()==digest(QByteArray::fromStdString(credential(user,type)));q.finish();
+    QSqlQuery update(db_);
+    if(!valid){update.prepare("DELETE FROM device_tokens WHERE digest=?");update.addBindValue(key);sql(update);return 0;}
+    update.prepare("UPDATE device_tokens SET expires=? WHERE digest=?");update.addBindValue(now+lifetime);update.addBindValue(key);sql(update);
+    service=int(type);device=kind;return user;
+}
+void WorkspaceBackendHsx::forgetToken(int user,const QString& token){if(!tokenFormat(token))return;QSqlQuery q(db_);q.prepare("DELETE FROM device_tokens WHERE digest=? AND actor=?");q.addBindValue(digest(token.toLatin1()));q.addBindValue(user);sql(q);}
+void WorkspaceBackendHsx::forgetTokens(int user){QSqlQuery q(db_);q.prepare("DELETE FROM device_tokens WHERE actor=?");q.addBindValue(user);sql(q);}
 void WorkspaceBackendHsx::reviewOrder(const QString& id,bool approve,const QString& note){command(0,ServiceHsx::Count,QUuid::createUuid().toString(),{{"op","admin.membership.review"},{"id",id},{"approve",approve},{"verified",approve},{"note",note}},true);}
 int WorkspaceBackendHsx::registerUser(const QString& nickname,const std::string& hash,ServiceHsx service){
     require(PasswordHsx::valid(hash),"密码摘要无效");require(data_.users().size()<1000,"当前用户容量已满");
@@ -138,6 +167,8 @@ QJsonObject WorkspaceBackendHsx::command(int actor,ServiceHsx service,const QStr
                 QSqlQuery reviewed(db_);reviewed.prepare("UPDATE membership_orders SET reviewer=?,reviewed=? WHERE id=?");reviewed.addBindValue(QString::fromStdString(data_.adminName_));reviewed.addBindValue(QDateTime::currentSecsSinceEpoch());reviewed.addBindValue(data["id"].toString());sql(reviewed);
                 data_.audit(data_.adminName_,(data["approve"].toBool()?"确认会员到账：":"驳回会员申请：")+s(data["id"]));
             }else throw std::runtime_error("不支持此管理操作");
+            // An ended session must not come back through a saved automatic sign-in.
+            if(result["revokeUser"].toInt()>0)forgetTokens(result["revokeUser"].toInt());
             data_.adminOnline_=false;
         }
         else if(SocialStoreHsx(db_,data_).command(actor,data,result)){}
