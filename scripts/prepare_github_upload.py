@@ -26,14 +26,14 @@ def main():
         if not record:continue
         metadata,rawpath=record.split(b'\t',1);mode,sha,stage=metadata.decode('ascii').split()
         path=rawpath.decode('utf-8')
-        if mode!='100644' or stage!='0':raise ValueError('Unexpected Git index entry: '+path)
+        if mode not in ('100644','100755') or stage!='0':raise ValueError('Unexpected Git index entry: '+path)
         if path.startswith(blocked_roots) or path.lower().endswith(blocked_suffixes) or 'output/' in path or path=='assets/payment/wechat-receive.jpg':
             raise ValueError('Private/generated file staged: '+path)
         data=git('cat-file','blob',sha)
         if token_pattern.search(data):raise ValueError('Possible credential staged: '+path)
         item=dict(path=path,mode=mode,type='blob',sha=sha,size=len(data),sha256=hashlib.sha256(data).hexdigest())
         manifest.append(item)
-        if path.endswith(('.png','.jpg','.wav')):
+        if path.endswith(('.png','.jpg','.wav','.ico')):
             binary.append({**item,'content':base64.b64encode(data).decode('ascii')})
         else:
             text.append(dict(path=path,mode=mode,type='blob',content=data.decode('utf-8')))
