@@ -14,6 +14,7 @@
 #include "FeedPageHsx.h"
 #include "WeiboThemeHsx.h"
 #include "UpdateManagerHsx.h"
+#include "WindowFrameHsx.h"
 #include <QApplication>
 #include <QTimer>
 #include <QButtonGroup>
@@ -36,7 +37,7 @@ const QStringList captions{"私语与群聊，让心意慢慢靠近","管理好�
 const QStringList icons{"chat","users","group","bell","user","data","chat","shield","chat"};
 }
 MainWindowHsx::MainWindowHsx(AppSessionHsx& s,QWidget* parent):QMainWindow(parent),session_(s) {
-    setWindowTitle(s.remote()?"听澜 · 山水有相逢":"听澜 · 离线课程演示");setWindowIcon(IconHsx::get("brand","#1689ff"));setMinimumSize(1180,740);
+    setWindowTitle(s.remote()?"听澜 · 山水有相逢":"听澜 · 离线课程演示");setWindowIcon(IconHsx::app());setMinimumSize(1180,740);
     const auto screen=QGuiApplication::primaryScreen()->availableGeometry();resize(qMin(1440,screen.width()-60),qMin(900,screen.height()-60));
     auto* central=new QWidget;setCentralWidget(central);auto* layout=new QHBoxLayout(central);layout->setContentsMargins(0,0,0,0);layout->setSpacing(0);
     auto* sidebar=new QWidget;sidebar->setObjectName("sidebar");sidebar->setFixedWidth(180);auto* side=new QVBoxLayout(sidebar);side->setContentsMargins(12,21,12,16);side->setSpacing(5);
@@ -66,21 +67,31 @@ MainWindowHsx::MainWindowHsx(AppSessionHsx& s,QWidget* parent):QMainWindow(paren
     auto* serviceCard=new QFrame;serviceCard->setObjectName("sidebarService");auto* serviceLayout=new QVBoxLayout(serviceCard);serviceLayout->setContentsMargins(10,8,8,8);serviceLayout->setSpacing(6);
     auto* serviceLabel=new QLabel("当前服务");serviceLayout->addWidget(serviceLabel);services_=new QComboBox;services_->setObjectName("activeService");services_->setMinimumWidth(0);auto* serviceRow=new QHBoxLayout;serviceRow->setSpacing(6);serviceRow->addWidget(services_,1);
     auto* switchUser=new QPushButton;switchUser->setObjectName("switchAccount");switchUser->setIcon(IconHsx::get("exit","#84987c"));switchUser->setIconSize(QSize(19,19));switchUser->setToolTip("切换账号 / 登出");switchUser->setAccessibleName("切换账号 / 登出");switchUser->setFixedSize(40,40);serviceRow->addWidget(switchUser);serviceLayout->addLayout(serviceRow);side->addWidget(serviceCard);
-    auto* quote=new QLabel("山水有相逢。");quote_=quote;quote->setAlignment(Qt::AlignCenter);quote->setStyleSheet("font-family:'SimSun';font-size:12px;color:#8ba5c6;padding:10px 0 2px 0;letter-spacing:2px;");side->addWidget(quote);areaLayout->addWidget(header);
+    auto* quote=new QLabel("山水有相逢。");quote_=quote;quote->setAlignment(Qt::AlignCenter);quote->setStyleSheet("font-family:'SimSun';font-size:12px;color:#8ba5c6;padding:10px 0 2px 0;letter-spacing:2px;");side->addWidget(quote);
+    // The window's own title row replaces the system title bar and the old status bar: notices on the left,
+    // connection state, updates and the window buttons on the right. Empty space drags the window.
+    auto* bar=new QFrame;bar->setObjectName("windowBar");bar->setFixedHeight(38);auto* barRow=new QHBoxLayout(bar);barRow->setContentsMargins(24,4,6,0);barRow->setSpacing(10);
+    notice_=new QLabel("所有修改已保存");notice_->setObjectName("windowNotice");notice_->setMinimumWidth(0);barRow->addWidget(notice_,1);
+    noticeTimer_=new QTimer(this);noticeTimer_->setSingleShot(true);connect(noticeTimer_,&QTimer::timeout,notice_,&QLabel::clear);noticeTimer_->start(5000);
+    areaLayout->addWidget(bar);areaLayout->addWidget(header);
     pages_=new QStackedWidget;pages_->setObjectName("mainPages");chat_=new ChatPageHsx(s);friends_=new FriendsPageHsx(s);groups_=new GroupsPageHsx(s);requests_=new RequestsPageHsx(s);accounts_=new AccountsPageHsx(s);data_=new DataPageHsx(s);network_=new NetworkPageHsx(this);network_->hide();feed_=new FeedPageHsx(s,this);weibo_=new FeedPageHsx(s,this,"weibo");studio_=new StudioPageHsx(s);
     for(QWidget* page:std::initializer_list<QWidget*>{chat_,friends_,groups_,requests_,accounts_,data_,feed_,studio_,weibo_})pages_->addWidget(page);
     auto* body=new QWidget;auto* bodyLayout=new QVBoxLayout(body);bodyLayout_=bodyLayout;bodyLayout->setContentsMargins(26,24,26,22);bodyLayout->addWidget(pages_);areaLayout->addWidget(body,1);layout->addWidget(area,1);
+    connection_=new QLabel(s.remote()?s.connectionStatus():"本机演示");connection_->setObjectName("connectionState");barRow->addWidget(connection_);connect(&s,&AppSessionHsx::connectionChanged,connection_,&QLabel::setText);
 #ifdef IM_USER_CLIENT
-    auto* updates=new QPushButton("软件更新");updates->setObjectName("softwareUpdates");statusBar()->addPermanentWidget(updates);connect(updates,&QPushButton::clicked,this,[]{UpdateManagerHsx::showUpdates();});
+    auto* updates=new QPushButton("软件更新");updates->setObjectName("softwareUpdates");barRow->addWidget(updates);connect(updates,&QPushButton::clicked,this,[]{UpdateManagerHsx::showUpdates();});
 #endif
-    connection_=new QLabel(s.remote()?s.connectionStatus():"本机演示");connection_->setObjectName("connectionState");statusBar()->addPermanentWidget(connection_);connect(&s,&AppSessionHsx::connectionChanged,connection_,&QLabel::setText);
-    statusBar()->setSizeGripEnabled(false);statusBar()->showMessage("  所有修改已保存");auto* footer=new QLabel("山水有相逢  ·  听澜     ");footer->setObjectName("muted");statusBar()->addPermanentWidget(footer);
+    barRow->addWidget(WindowFrameHsx::buttons(this));
+    WindowFrameHsx::install(this,[this,bar,sidebar](const QPoint& p){
+        auto area=[this](QWidget* w){return w->isVisible()?QRect(w->mapTo(this,QPoint(0,0)),w->size()):QRect();};
+        const QRect brand(sidebar->mapTo(this,QPoint(0,0)),QSize(sidebar->width(),74));
+        return (area(bar).contains(p)||area(header_).contains(p)||brand.contains(p))&&WindowFrameHsx::passive(this,p);});
     connect(services_,&QComboBox::currentIndexChanged,this,[this](int){if(services_->currentIndex()>=0)session_.switchService(static_cast<ServiceHsx>(services_->currentData().toInt()));});
     connect(switchUser,&QPushButton::clicked,this,[this]{emit returnToLogin();});connect(&s,&AppSessionHsx::sessionEnded,this,[this]{emit returnToLogin();});
     connect(friends_,&FriendsPageHsx::openChat,this,[this](int target){if(!session_.data().account(session_.user(),session_.service()).friends().count(target)){QMessageBox::information(this,"添加好友","先发送好友申请，等待对方同意后即可聊天。");return;}navigate(0);chat_->open(MessageKindHsx::Private,target);});
     connect(groups_,&GroupsPageHsx::openChat,this,[this](int target){if(!session_.data().group(target).contains(session_.user(),session_.service())){QMessageBox::information(this,"加入群组","请先通过当前服务加入此群。");return;}navigate(0);chat_->open(MessageKindHsx::Group,target);});
     connect(&s,&AppSessionHsx::changed,this,[this]{refresh();});connect(&s,&AppSessionHsx::countersChanged,this,[this]{counters();});
-    connect(&s,&AppSessionHsx::failed,this,[this](const QString& message){statusBar()->showMessage(message,12000);QMessageBox::warning(this,"操作未完成",message);});connect(&s,&AppSessionHsx::succeeded,this,[this](const QString& message){statusBar()->showMessage(message,6000);});
+    connect(&s,&AppSessionHsx::failed,this,[this](const QString& message){notice(message,12000);QMessageBox::warning(this,"操作未完成",message);});connect(&s,&AppSessionHsx::succeeded,this,[this](const QString& message){notice(message,6000);});
     connect(chat_,&ChatPageHsx::openSection,this,&MainWindowHsx::navigate);
     connect(chat_,&ChatPageHsx::openStudio,this,[this]{navigate(7);});
     connect(chat_,&ChatPageHsx::openWardrobe,this,[this](int friendId){studio_->showWardrobe(friendId);navigate(7);});
@@ -102,5 +113,6 @@ void MainWindowHsx::updatePageIcon(){
     const int page=pages_->currentIndex();if(page<0||page>=9)return;const bool blog=session_.service()==ServiceHsx::Weibo;
     pageIcon_->setStyleSheet(QString("background:%1;border-radius:15px;").arg(blog?"#f8e6f0":"#e6f1ff"));pageIcon_->setPixmap(IconHsx::get(icons[page],blog?"#c45c93":ThemeHsx::accent(currentTheme_)).pixmap(QSize(24,24),devicePixelRatioF()));
 }
+void MainWindowHsx::notice(const QString& text,int ms){notice_->setText(text);notice_->setToolTip(text);noticeTimer_->start(ms);}
 void MainWindowHsx::closeEvent(QCloseEvent* event){if(!session_.save()&&!UiHsx::confirm(this,"保存失败。确定关闭并丢弃尚未保存的改动？")){event->ignore();return;}network_->stop();event->accept();}
 }

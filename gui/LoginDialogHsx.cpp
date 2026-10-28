@@ -8,6 +8,7 @@
 #include "ThemeHsx.h"
 #include "UpdateManagerHsx.h"
 #include "QrLoginDialogHsx.h"
+#include "WindowFrameHsx.h"
 #include <QApplication>
 #include <QAction>
 #include <QButtonGroup>
@@ -23,7 +24,7 @@ namespace im {
 LoginDialogHsx::LoginDialogHsx(AppSessionHsx& session,QWidget* parent,bool admin,std::function<bool()> settings):QDialog(parent),session_(session) {
     ThemeHsx::install(*qApp);
     setWindowTitle("听澜 · 山水有相逢");setFixedSize(1120,760);setObjectName("loginDialog");
-    setWindowIcon(IconHsx::get("brand","#356552"));
+    setWindowIcon(IconHsx::app());
     setStyleSheet(R"(
         QDialog#loginDialog {background:#fbfcf7;}
         QDialog#loginDialog QLineEdit,QDialog#loginDialog QComboBox {background:#f6f8f1;border:1px solid #e2e8dc;border-radius:10px;min-height:23px;padding:12px;color:#334d3c;font-size:13px;}
@@ -97,6 +98,9 @@ LoginDialogHsx::LoginDialogHsx(AppSessionHsx& session,QWidget* parent,bool admin
 #ifdef IM_USER_CLIENT
     role_->removeItem(1);role_->setCurrentIndex(0);selector->hide();
 #endif
+    // No system title bar: minimise and close float at the top right, and any empty spot drags the window.
+    auto* windowButtons=WindowFrameHsx::buttons(this,false);windowButtons->setParent(this);windowButtons->adjustSize();windowButtons->move(width()-windowButtons->width()-10,8);windowButtons->raise();
+    WindowFrameHsx::install(this,[this](const QPoint& p){return WindowFrameHsx::passive(this,p);},false);
     // Explain why the previous session ended, e.g. the account signed in on another computer.
     if(const auto reason=session_.takeEndReason();!reason.isEmpty())error_->setText(reason);
 }

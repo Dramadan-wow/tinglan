@@ -16,6 +16,7 @@ OutputBaseFilename=Tinglan-{#Version}-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\icons\tinglan.ico
 UninstallDisplayIcon={app}\im_desktop.exe
 CloseApplications=yes
 SetupLogging=yes

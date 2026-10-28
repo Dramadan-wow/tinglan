@@ -20,7 +20,7 @@ bool remoteProfile(const QString& path){QFile f(path);if(!f.open(QIODevice::Read
 int main(int argc,char** argv){
     QApplication app(argc,argv);app.setApplicationName("听澜");app.setOrganizationName("Hsx Coursework");app.setApplicationVersion(IM_APP_VERSION);
     auto* updater=new im::UpdateManagerHsx(&app);
-    im::ThemeHsx::install(app);app.setWindowIcon(im::IconHsx::get("brand","#356552"));
+    im::ThemeHsx::install(app);app.setWindowIcon(im::IconHsx::app());
     QCommandLineParser parser;parser.setApplicationDescription("听澜 · 普通客户端");parser.addHelpOption();parser.addVersionOption();
     parser.addOption({"client-config","使用指定的 TLS 中心服务器配置","file"});parser.addOption({"connection-settings","打开连接设置"});parser.addOption({"connection-code","导入服务器文字连接码","code"});parser.process(app);
     try{

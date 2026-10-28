@@ -1,0 +1,3 @@
+#pragma code_page(65001)
+// Application icon for im_desktop.exe and im_client.exe; regenerate with app_icon_tool.
+IDI_ICON1 ICON "../assets/icons/tinglan.ico"

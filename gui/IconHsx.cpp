@@ -2,6 +2,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
+#include <algorithm>
 namespace im {
 namespace {
 QPixmap draw(const QString& name,const QColor& color) {
@@ -13,6 +14,10 @@ QPixmap draw(const QString& name,const QColor& color) {
     else if(name=="bell") {path.moveTo(5,16);path.lineTo(6,13);path.lineTo(6,9);path.cubicTo(6,1,18,1,18,9);path.lineTo(18,13);path.lineTo(20,17);path.lineTo(4,17);path.closeSubpath();p.drawPath(path);p.drawArc(QRectF(9,17,6,5),180*16,180*16);}
     else if(name=="data") {p.drawRoundedRect(QRectF(3,3,18,18),3,3);p.drawLine(7,16,7,12);p.drawLine(12,16,12,7);p.drawLine(17,16,17,10);}
     else if(name=="network") {p.drawEllipse(QPointF(12,5),3,3);p.drawEllipse(QPointF(5,19),3,3);p.drawEllipse(QPointF(19,19),3,3);p.drawLine(10,8,6,16);p.drawLine(14,8,18,16);p.drawLine(8,19,16,19);}
+    else if(name=="win-min") {p.drawLine(QPointF(7,12),QPointF(17,12));}
+    else if(name=="win-max") {p.drawRect(QRectF(7,7,10,10));}
+    else if(name=="win-restore") {p.drawRect(QRectF(7,9.5,7.5,7.5));path.moveTo(9.5,9.5);path.lineTo(9.5,7);path.lineTo(17,7);path.lineTo(17,14.5);path.lineTo(14.5,14.5);p.drawPath(path);}
+    else if(name=="win-close") {p.drawLine(QPointF(7.5,7.5),QPointF(16.5,16.5));p.drawLine(QPointF(16.5,7.5),QPointF(7.5,16.5));}
     else if(name=="qr") {p.drawRect(QRectF(3,3,6,6));p.drawRect(QRectF(15,3,6,6));p.drawRect(QRectF(3,15,6,6));p.drawLine(15,15,15,21);p.drawLine(18,15,21,15);p.drawLine(18,18,18,21);p.drawLine(21,18,21,21);}
     else if(name=="search") {p.drawEllipse(QRectF(3,3,12.5,12.5));p.drawLine(QPointF(13,13),QPointF(21,21));}
     else if(name=="exit") {path.moveTo(10,3);path.lineTo(4,3);path.lineTo(4,21);path.lineTo(10,21);path.moveTo(9,12);path.lineTo(22,12);path.moveTo(17,7);path.lineTo(22,12);path.lineTo(17,17);p.drawPath(path);}
@@ -34,5 +39,15 @@ QPixmap draw(const QString& name,const QColor& color) {
     return image;
 }
 }
+QImage IconHsx::appImage(int size){
+    QImage image(size,size,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::transparent);QPainter p(&image);p.setRenderHint(QPainter::Antialiasing);
+    const double s=size/24.0;const QRectF tile(s*.5,s*.5,size-s,size-s);QLinearGradient fill(tile.topLeft(),tile.bottomRight());fill.setColorAt(0,QColor("#3aa0ff"));fill.setColorAt(1,QColor("#1268d6"));
+    p.setPen(Qt::NoPen);p.setBrush(fill);p.drawRoundedRect(tile,size*.23,size*.23);
+    // The 24-unit brand path, scaled to 66% of the tile; small sizes keep a stroke of at least 1.2 px.
+    p.translate(size*.17,size*.18);p.scale(s*.66,s*.66);p.setBrush(Qt::NoBrush);p.setPen(QPen(Qt::white,std::max(2.1,1.2/(s*.66)),Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
+    QPainterPath path;path.moveTo(3,11);path.lineTo(9,4);path.lineTo(14,11);path.lineTo(18,7);path.lineTo(22,11);for(int y:{15,20}){path.moveTo(2,y);path.cubicTo(8,y-4,16,y+4,22,y);}p.drawPath(path);
+    return image;
+}
+QIcon IconHsx::app(){static const QIcon icon=[]{QIcon all;for(int size:{16,20,24,32,40,48,64,128,256})all.addPixmap(QPixmap::fromImage(appImage(size)));return all;}();return icon;}
 QIcon IconHsx::get(const QString& name,const QString& color,const QString& selected){QIcon icon;icon.addPixmap(draw(name,QColor(color)),QIcon::Normal,QIcon::Off);icon.addPixmap(draw(name,QColor(selected)),QIcon::Normal,QIcon::On);icon.addPixmap(draw(name,QColor("#b5c0ba")),QIcon::Disabled);return icon;}
 }

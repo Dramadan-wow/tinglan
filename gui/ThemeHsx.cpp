@@ -153,8 +153,10 @@ QString ThemeHsx::workspace(const QString& theme) {
         QFrame#sidebarProfile {background:rgba(255,255,255,165);border:1px solid #e1ecf9;border-radius:16px;}
         QFrame#sidebarService {background:rgba(255,255,255,140);border:1px solid #e1ecf9;border-radius:14px;}
         QFrame#sidebarService QLabel {color:#8a9dba;font-size:10px;letter-spacing:1px;}
-        QLabel#connectionState {color:#4f6f96;background:#e7f1fe;border-radius:9px;padding:2px 10px;font-size:10px;}
-        QStatusBar QLabel {font-size:10px;}
+        QLabel#connectionState {color:#4f6f96;background:#e7f1fe;border-radius:9px;padding:3px 10px;font-size:10px;}
+        QFrame#windowBar {background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #f9fbff,stop:1 #eef5ff);border:none;}
+        QLabel#windowNotice {color:#8a9fbb;font-size:11px;}
+        QFrame#windowBar QPushButton#softwareUpdates {padding:3px 12px;font-size:11px;min-height:0;}
     )");
     sheet.replace("#1689ff",accent(theme));
     return sheet;

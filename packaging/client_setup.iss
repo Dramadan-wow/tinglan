@@ -16,6 +16,7 @@ OutputBaseFilename=Tinglan-{#Version}-Client-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\icons\tinglan.ico
 DisableProgramGroupPage=yes
 DisableDirPage=yes
 UninstallDisplayIcon={app}\im_client.exe

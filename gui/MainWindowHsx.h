@@ -21,6 +21,8 @@ private:
     void refresh();
     void counters();
     void updatePageIcon();
+    // Short messages shown in the title row, where the status bar used to be.
+    void notice(const QString& text,int ms);
     AppSessionHsx& session_;
     QStackedWidget* pages_;
     QWidget* header_;
@@ -43,6 +45,7 @@ private:
     StudioPageHsx* studio_;
     FeedPageHsx* feed_;
     FeedPageHsx* weibo_;
-    QLabel* connection_;
+    QLabel *connection_,*notice_;
+    class QTimer* noticeTimer_;
 };
 }
