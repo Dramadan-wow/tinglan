@@ -87,6 +87,8 @@ final class UiKit {
             case "plus":canvas.drawLine(12,5,12,19,p);canvas.drawLine(5,12,19,12,p);break;
             case "back":path.moveTo(15,5);path.lineTo(8,12);path.lineTo(15,19);canvas.drawPath(path,p);break;
             case "search":canvas.drawCircle(10,10,6,p);canvas.drawLine(15,15,21,21,p);break;
+            // The Tinglan mark from desktop IconHsx "brand": mountains over two waves.
+            case "wave":path.moveTo(3,11);path.lineTo(9,4);path.lineTo(14,11);path.lineTo(18,7);path.lineTo(22,11);for(int h:new int[]{15,20}){path.moveTo(2,h);path.cubicTo(8,h-4,16,h+4,22,h);}canvas.drawPath(path,p);break;
             case "scan":path.moveTo(3,8);path.lineTo(3,3);path.lineTo(8,3);path.moveTo(16,3);path.lineTo(21,3);path.lineTo(21,8);path.moveTo(21,16);path.lineTo(21,21);path.lineTo(16,21);path.moveTo(8,21);path.lineTo(3,21);path.lineTo(3,16);canvas.drawPath(path,p);canvas.drawLine(6,12,18,12,p);break;
             case "flame":path.moveTo(12,2.5f);path.cubicTo(14.5f,8,20,9,20,15);path.cubicTo(20,23,4,23,4,15);path.cubicTo(4,11,6.5f,9,8.5f,8);path.cubicTo(8,12,11,11.5f,12,2.5f);canvas.drawPath(path,p);canvas.drawCircle(9.5f,15.5f,.5f,p);canvas.drawCircle(14.5f,15.5f,.5f,p);break;
             // The arrowhead sits on the arc's clockwise end, pointing along it.

@@ -17,6 +17,8 @@ public:
     void loginAudit(const QString& nickname,int user,ServiceHsx service,const QString& action,bool admin=false);
     QJsonObject adminSnapshot() const;
     QJsonObject snapshot(int viewer) const;
+    // Add-friend search: exact service number or nickname, at most five results, no numbers or profile data.
+    QJsonArray searchUsers(int viewer,const QString& query) const;
     QJsonObject command(int actor,ServiceHsx service,const QString& request,const QJsonObject& data,bool administrator=false);
     QJsonArray orders()const;
     void reviewOrder(const QString& id,bool approve,const QString& note);

@@ -17,6 +17,10 @@ public:
     static QList<QPair<QString,QVariant>> services(const UserHsx& user);
     static QList<QPair<QString,QVariant>> allServices();
     static QList<QPair<QString,QVariant>> users(const DataStoreHsx& data, int exclude = 0);
+    // Friends of the signed-in user in the current service, for invitations.
+    static QList<QPair<QString,QVariant>> friends(const AppSessionHsx& session);
+    // A user's name, or a neutral label for someone the server does not show this viewer.
+    static QString name(const DataStoreHsx& data, int id);
     static bool confirm(QWidget* parent,const QString& message);
 };
 }

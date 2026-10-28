@@ -6,6 +6,8 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QSettings>
+#include <QTimer>
+#include <QUuid>
 namespace im {
 AppSessionHsx::AppSessionHsx(std::filesystem::path file, QObject* parent)
     : QObject(parent), file_(std::move(file)), accounts_(data_), admins_(data_), friends_(data_), groups_(data_), messages_(data_), studio_(*this,QString::fromStdWString(file_.wstring())) {
@@ -130,6 +132,8 @@ void AppSessionHsx::configureRemote(const QString& filename){
     connect(&remoteClient_,&net::ChatClientHsx::sessionRevoked,this,[this]{remoteAdmin_=false;user_=0;endReason_=connectionStatus_;emit sessionEnded();});
     connect(&remoteClient_,&net::ChatClientHsx::qrTicket,this,&AppSessionHsx::qrTicket);
     connect(&remoteClient_,&net::ChatClientHsx::qrStatus,this,&AppSessionHsx::qrStatus);
+    connect(&remoteClient_,&net::ChatClientHsx::usersFound,this,&AppSessionHsx::usersFound);
+    connect(&remoteClient_,&net::ChatClientHsx::searchFailed,this,&AppSessionHsx::searchFailed);
     connect(&remoteClient_,&net::ChatClientHsx::workspaceSnapshot,this,[this](const QJsonObject& snapshot){
         try{if(remoteOptions_.administrator){
                 require(snapshot["admin"].toBool()&&remoteClient_.user()=="workspace_admin","管理同步身份不匹配");
@@ -155,6 +159,17 @@ void AppSessionHsx::configureRemote(const QString& filename){
 void AppSessionHsx::loginRemote(const QString& nickname,ServiceHsx service,const QString& password,bool registration){
     legacyAppearanceAttempted_=false;
     admins_.logout();remoteAdmin_=false;remoteOptions_.administrator=false;remoteLoginPending_=true;service_=service;remoteOptions_.username=nickname.trimmed();remoteOptions_.password=password;remoteOptions_.service=int(service);remoteOptions_.registerAccount=registration;remoteClient_.start(remoteOptions_);remoteOptions_.password.clear();
+}
+QString AppSessionHsx::searchUsers(const QString& query){
+    if(remote())return remoteClient_.searchUsers(query.trimmed());
+    // Course mode keeps the same rule as the server: a full nickname or service number, at most five people.
+    const auto request=QUuid::createUuid().toString(QUuid::WithoutBraces);const auto term=query.trimmed();bool numeric=false;const auto number=term.toLongLong(&numeric);QJsonArray found;
+    if(!term.isEmpty())for(const auto& [id,u]:data_.users()){
+        if(id==user_||!u->loginAllowed())continue;bool match=q(u->name()).trimmed().compare(term,Qt::CaseInsensitive)==0;QJsonArray services;
+        for(const auto& [type,a]:u->services()){if(!activeService(type))continue;if(numeric&&a.number()==number)match=true;services.append(QJsonObject{{"type",int(type)},{"nick",q(a.nick())}});}
+        if(match&&!services.isEmpty())found.append(QJsonObject{{"id",id},{"name",q(u->name())},{"services",services}});if(found.size()>=5)break;
+    }
+    QTimer::singleShot(0,this,[this,request,found]{emit usersFound(request,found);});return request;
 }
 void AppSessionHsx::loginRemoteQr(ServiceHsx service){
     legacyAppearanceAttempted_=false;

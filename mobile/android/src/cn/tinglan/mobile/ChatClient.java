@@ -29,6 +29,15 @@ public final class ChatClient implements AutoCloseable {
         default void signedOut(){}
         /** Answer to scanning or confirming a desktop sign-in QR code. */
         default void qr(JSONObject result){}
+        /** Add-friend search results (exact nickname or service number), or why the search failed. */
+        default void found(org.json.JSONArray users){}
+        default void searchFailed(String detail){}
+    }
+    private final java.util.Set<String> searches=java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** Search the server for one person to add: a full nickname or service number. */
+    public void search(String query) throws Exception {
+        ConnectionProfile.require(online&&active,"尚未连接，无法查找用户");String id=Wire.id();
+        ConnectionProfile.require(outgoing.offer(Wire.envelope("user_search",Wire.obj("query",query),identity,id)),"发送队列已满，请稍后再试");searches.add(id);
     }
     private final ConnectionProfile profile;
     private final Listener listener;
@@ -130,11 +139,13 @@ public final class ChatClient implements AutoCloseable {
         }else if(type.equals("workspace_result")){
             String id=d.optString("requestId");synchronized(this){if(pending.remove(id)!=null)listener.result(id,d);}
         }else if(type.equals("qr_result")&&online){listener.qr(d);
+        }else if(type.equals("user_search_result")&&online){if(searches.remove(d.optString("requestId")))listener.found(d.optJSONArray("users")==null?new org.json.JSONArray():d.optJSONArray("users"));
         }else if(type.equals("logout_result")&&online){active=false;throw new Quiet();
         }else if(type.equals("error")){
             if(d.optString("code").equals("session_revoked")){listener.signedOut();throw new Terminal("此会话已结束，请重新登录");}
             if(d.optString("code").equals("session_replaced")){listener.signedOut();throw new Terminal("账号已在另一部手机上登录，本机已下线");}
             String id=d.optString("requestId"),detail=d.optString("detail",d.optString("code","服务器拒绝请求"));
+            if(searches.remove(id)){listener.searchFailed(d.optString("code").equals("search_rate_limit")?"查找过于频繁，请一分钟后再试":d.optString("code").equals("unknown_type")?"服务器版本较旧，暂不支持查找用户":detail);return;}
             synchronized(this){if(pending.remove(id)!=null)listener.result(id,Wire.obj("ok",false,"detail",detail));else throw new Terminal(detail);}
         }else if(!type.equals("heartbeat"))throw new Terminal("不支持的服务器消息");
     }

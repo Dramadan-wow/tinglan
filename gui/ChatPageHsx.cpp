@@ -11,6 +11,7 @@
 #include <QClipboard>
 #include <QApplication>
 #include <QComboBox>
+#include <QDialog>
 #include <QDateTime>
 #include <QEvent>
 #include <QFileDialog>
@@ -46,6 +47,7 @@ class ContactArtworkHsx final : public QWidget {
 public:
     explicit ContactArtworkHsx(QWidget* parent=nullptr):QWidget(parent),cover_(":/art/mist-river.png") {setFixedHeight(196);}
     void setFace(const QPixmap& face) {face_=face;update();}
+    const QPixmap& face() const {return face_;}
 protected:
     void paintEvent(QPaintEvent*) override {
         QPainter p(this);p.setRenderHint(QPainter::Antialiasing);p.setRenderHint(QPainter::SmoothPixmapTransform);
@@ -106,12 +108,16 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     auto* pl=new QVBoxLayout(panelContent);pl->setContentsMargins(14,12,14,16);pl->setSpacing(11);
     contactArtwork_=new ContactArtworkHsx;pl->addWidget(contactArtwork_);
     contactName_=new QLabel;contactName_->setObjectName("contactName");contactName_->setTextFormat(Qt::PlainText);contactName_->setWordWrap(true);pl->addWidget(contactName_);
-    contactDetails_=new QLabel;contactDetails_->setObjectName("contactDetails");contactDetails_->setTextFormat(Qt::RichText);contactDetails_->setWordWrap(true);pl->addWidget(contactDetails_);
+    contactStatus_=new QLabel;contactStatus_->setObjectName("contactStatus");contactStatus_->setTextFormat(Qt::RichText);pl->addWidget(contactStatus_);
+    // Profile facts in a white card, then three tiles: messages, favourites and the fire-buddy streak (or members).
+    auto* infoCard=new QFrame;infoCard->setObjectName("contactCard");auto* info=new QVBoxLayout(infoCard);info->setContentsMargins(14,12,14,12);
+    contactDetails_=new QLabel;contactDetails_->setObjectName("contactDetails");contactDetails_->setTextFormat(Qt::RichText);contactDetails_->setWordWrap(true);info->addWidget(contactDetails_);pl->addWidget(infoCard);
+    auto* tiles=new QHBoxLayout;tiles->setSpacing(8);for(auto*& tile:contactTiles_){tile=new QLabel;tile->setObjectName("contactTile");tile->setTextFormat(Qt::RichText);tile->setAlignment(Qt::AlignCenter);tile->setMinimumHeight(64);tiles->addWidget(tile,1);}pl->addLayout(tiles);
     auto* quote=new QLabel("山不见我，我自去见山。");quote->setObjectName("contactQuote");quote->setWordWrap(true);pl->addWidget(quote);
     auto* quick=new QHBoxLayout;quick->setSpacing(7);profileButton_=new QPushButton("查看资料");profileButton_->setIcon(IconHsx::get("user","#1689ff"));profileButton_->setStyleSheet("padding:13px 7px;");quick->addWidget(profileButton_);
     auto* manage=new QPushButton("管理会话");manage->setIcon(IconHsx::get("users","#1689ff"));manage->setStyleSheet("padding:13px 7px;");connect(manage,&QPushButton::clicked,this,[this]{emit openSection(target_&&kind_==MessageKindHsx::Group?2:1);});quick->addWidget(manage);pl->addLayout(quick);
     auto* section=new QLabel("相逢的记录");section->setObjectName("contactSection");pl->addWidget(section);
-    contactStats_=new QLabel;contactStats_->setObjectName("contactStats");contactStats_->setWordWrap(true);pl->addWidget(contactStats_);
+    contactStats_=new QLabel;contactStats_->setObjectName("contactStats");contactStats_->setWordWrap(true);pl->addWidget(contactStats_);contactStats_->hide();section->hide();
     auto* historyButton=new QPushButton("聊天记录");historyButton->setObjectName("contactAction");historyButton->setIcon(IconHsx::get("chat","#6585ad"));pl->addWidget(historyButton);connect(historyButton,&QPushButton::clicked,this,[this]{filters_->show();search_->setFocus();});
     auto* exportButton=new QPushButton("导出记录");exportButton->setObjectName("contactAction");exportButton->setIcon(IconHsx::get("download","#6585ad"));pl->addWidget(exportButton);
     auto* studioButton=new QPushButton("气泡与背景装扮");studioButton->setObjectName("contactAction");studioButton->setIcon(IconHsx::get("palette","#6585ad"));pl->addWidget(studioButton);connect(studioButton,&QPushButton::clicked,this,&ChatPageHsx::openStudio);
@@ -123,7 +129,7 @@ ChatPageHsx::ChatPageHsx(AppSessionHsx& s,QWidget* parent):QWidget(parent),sessi
     panel->hide();for(auto* opener:{static_cast<QWidget*>(headerAvatar_),static_cast<QWidget*>(title_)}){opener->setCursor(Qt::PointingHandCursor);opener->setToolTip("点击查看或收起会话资料");opener->installEventFilter(this);}
     connect(detailsButton,&QPushButton::toggled,panel,&QWidget::setVisible);
     connect(detailsButton,&QPushButton::toggled,this,[this]{reflow_->start();});
-    connect(profileButton_,&QPushButton::clicked,this,[this]{if(target_)QMessageBox::information(this,"会话资料",contactName_->text()+"\n\n"+contactDetails_->property("plainText").toString()+"\n\n"+contactStats_->text());});
+    connect(profileButton_,&QPushButton::clicked,this,[this]{if(target_)showProfile();});
     connect(conversations_,&QListWidget::currentItemChanged,this,[this](QListWidgetItem* item){if(!item)return;kind_=static_cast<MessageKindHsx>(item->data(Qt::UserRole).toInt());target_=item->data(Qt::UserRole+1).toInt();limit_=40;showHistory();});
     connect(conversationSearch_,&QLineEdit::textChanged,this,[this](const QString& term){for(int i=0;i<conversations_->count();++i){auto* item=conversations_->item(i);item->setHidden(!(item->data(Qt::UserRole+2).toString()+item->data(Qt::UserRole+3).toString()).contains(term,Qt::CaseInsensitive));}});
     connect(search_,&QLineEdit::textChanged,this,[this]{showHistory();});connect(favorites_,&QCheckBox::toggled,this,[this]{showHistory();});connect(send_,&QPushButton::clicked,this,[this]{send();});connect(composer_,&QLineEdit::returnPressed,this,[this]{send();});connect(older_,&QPushButton::clicked,this,[this]{limit_+=40;showHistory();});
@@ -210,11 +216,31 @@ void ChatPageHsx::refreshDetails() {
         }
         int stars=0;const auto history=session_.messages().history(user_,service_,kind_,target_);for(const auto* message:history)if(message->starred(user_))++stars;
         contactStats_->setText(QString("%1 条消息    ·    %2 条收藏").arg(history.size()).arg(stars));
-    } else {face=IconHsx::get("brand","#1689ff").pixmap(80,80);contactStats_->setText("从一句问候，开始新的故事。");}
+        auto tile=[](QLabel* label,const QString& value,const QString& caption){label->setText(QString("<div style='font-size:19px;font-weight:700;color:#20324e;'>%1</div><div style='font-size:10px;color:#8a9fbb;'>%2</div>").arg(value.toHtmlEscaped(),caption));};
+        tile(contactTiles_[0],QString::number(history.size()),"条消息");tile(contactTiles_[1],QString::number(stars),"条收藏");
+        if(kind_==MessageKindHsx::Private){const auto streak=session_.studio().streak(target_);tile(contactTiles_[2],QString::number(streak["days"].toInt()),"天连续聊天");}
+        else tile(contactTiles_[2],QString::number(session_.data().group(target_).members().size()),"位成员");
+        if(kind_==MessageKindHsx::Private){const auto& user=session_.data().user(target_);const bool online=user.online();const auto& mine=session_.data().account(user_,service_).friends();const auto it=mine.find(target_);
+            contactStatus_->setText(QString("<span style='color:%1;'>●</span> <span style='color:#6a7f9c;'>%2 · %3</span>").arg(online?"#25b57a":"#b4c0d0",online?"在线":"离线",it!=mine.end()?"好友 · "+S::q(serviceName(it->second.contact())):QString("私聊")));}
+        else contactStatus_->setText(QString("<span style='color:#1689ff;'>●</span> <span style='color:#6a7f9c;'>群聊 · %1</span>").arg(S::q(modeName(session_.data().group(target_).policy().mode()))));
+        contactStatus_->show();for(auto* t:contactTiles_)t->show();
+    } else {face=IconHsx::get("brand","#1689ff").pixmap(80,80);contactStats_->setText("从一句问候，开始新的故事。");contactStatus_->hide();for(auto* t:contactTiles_)t->hide();}
     contactName_->setText(name);contactDetails_->setProperty("plainText",details);contactDetails_->setText(detailTable(details));
     const auto dpr=devicePixelRatioF();auto headerFace=face.scaled(qRound(48*dpr),qRound(48*dpr),Qt::KeepAspectRatio,Qt::SmoothTransformation);headerFace.setDevicePixelRatio(dpr);headerAvatar_->setPixmap(headerFace);
     static_cast<ContactArtworkHsx*>(contactArtwork_)->setFace(face);
 }
 
+// The 查看资料 window: the same facts as the side panel, laid out as a profile card.
+void ChatPageHsx::showProfile(){
+    QDialog dialog(this);dialog.setObjectName("profileDialog");dialog.setWindowTitle("听澜 · 会话资料");dialog.setFixedWidth(400);dialog.setStyleSheet("QDialog#profileDialog{background:#f8fbff;}");
+    auto* l=new QVBoxLayout(&dialog);l->setContentsMargins(18,18,18,18);l->setSpacing(12);
+    auto* art=new ContactArtworkHsx;art->setFace(static_cast<ContactArtworkHsx*>(contactArtwork_)->face());l->addWidget(art);
+    auto* name=new QLabel(contactName_->text());name->setObjectName("contactName");name->setTextFormat(Qt::PlainText);l->addWidget(name);
+    auto* status=new QLabel(contactStatus_->text());status->setObjectName("contactStatus");status->setTextFormat(Qt::RichText);l->addWidget(status);
+    auto* card=new QFrame;card->setObjectName("contactCard");auto* c=new QVBoxLayout(card);c->setContentsMargins(14,12,14,12);auto* details=new QLabel(contactDetails_->text());details->setObjectName("contactDetails");details->setTextFormat(Qt::RichText);details->setWordWrap(true);c->addWidget(details);l->addWidget(card);
+    auto* tiles=new QHBoxLayout;tiles->setSpacing(8);for(auto* source:contactTiles_){auto* tile=new QLabel(source->text());tile->setObjectName("contactTile");tile->setTextFormat(Qt::RichText);tile->setAlignment(Qt::AlignCenter);tile->setMinimumHeight(64);tiles->addWidget(tile,1);}l->addLayout(tiles);
+    auto* close=new QPushButton("关闭");close->setProperty("primary",true);connect(close,&QPushButton::clicked,&dialog,&QDialog::accept);l->addWidget(close);
+    dialog.exec();
+}
 void ChatPageHsx::send(){if(!target_||composer_->text().trimmed().isEmpty())return;const auto text=S::s(composer_->text());if(session_.command("chat.send",{{"kind",int(kind_)},{"target",target_},{"text",composer_->text()},{"mention",mentions_->currentData().toInt()}},[&]{if(kind_==MessageKindHsx::Private)session_.messages().sendPrivate(user_,service_,target_,text);else session_.messages().sendGroup(user_,service_,target_,text,mentions_->currentData().toInt());}))composer_->clear();}
 }

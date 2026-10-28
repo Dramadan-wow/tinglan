@@ -1,8 +1,10 @@
 #pragma once
 #include "ProtocolHsx.h"
+#include <QJsonArray>
 #include <QObject>
 #include <QElapsedTimer>
 #include <QHash>
+#include <QSet>
 #include <QTimer>
 class QTcpSocket;
 namespace im::net {
@@ -33,6 +35,8 @@ public:
     void updateNickname(const QString& nickname){options_.username=nickname;}
     QString workspaceCommand(const QJsonObject& data);
     QString sendChat(const QString& recipient,const QString& text,const QString& id={});
+    // Add-friend search on the server (exact nickname or service number); answered by usersFound.
+    QString searchUsers(const QString& query);
 signals:
     void fileSession(const QJsonObject& session);
     void fileNotice();
@@ -46,6 +50,8 @@ signals:
     void sessionRevoked();
     void qrTicket(const QString& text,int seconds);
     void qrStatus(const QString& state);
+    void usersFound(const QString& request,const QJsonArray& users);
+    void searchFailed(const QString& request,const QString& detail);
 private:
     void open();
     void login();
@@ -65,6 +71,7 @@ private:
     QByteArray snapshotBytes_;
     int snapshotPart_=0,snapshotCount_=0;
     QHash<QString,qint64> commands_;
+    QSet<QString> searches_;
     bool active_=false,authenticated_=false,everAuthenticated_=false;
     int retryMs_=1000;
 };

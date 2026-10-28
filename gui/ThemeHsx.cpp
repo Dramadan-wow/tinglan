@@ -130,6 +130,9 @@ QString ThemeHsx::workspace(const QString& theme) {
         QLabel#contactQuote {color:#8299b8;background:#eef4fc;border:1px solid #e5edf8;border-radius:10px;padding:12px;font-size:12px;}
         QLabel#contactSection {font-size:13px;font-weight:600;color:#2b4263;}
         QLabel#contactStats {background:#edf5ff;color:#557da7;border-radius:12px;padding:14px;font-size:12px;}
+        QLabel#contactStatus {font-size:12px;padding-bottom:2px;}
+        QFrame#contactCard {background:#ffffff;border:1px solid #e3ecf8;border-radius:14px;}
+        QLabel#contactTile {background:#ffffff;border:1px solid #e3ecf8;border-radius:12px;padding:8px 4px;}
         QPushButton#contactAction {text-align:left;padding:13px 12px;border:1px solid #e7eef8;background:#ffffff;border-radius:10px;}
         QPushButton#contactAction:hover {background:#e9f4ff;color:#1689ff;}
         QFrame#composerFrame {background:#ffffff;border:1px solid #e5edf8;border-radius:18px;}

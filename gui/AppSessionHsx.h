@@ -47,6 +47,8 @@ public:
     void loginRemoteAdmin(const QString& name,const QString& password);
     // Sign in by scanning a QR code with the phone app; qrTicket/qrStatus report progress.
     void loginRemoteQr(ServiceHsx service);
+    // Add-friend search: exact nickname or service number only, answered by usersFound or searchFailed.
+    QString searchUsers(const QString& query);
     // Why the last remote session ended (replaced by another device, ended by the administrator); read once.
     QString takeEndReason(){return std::exchange(endReason_,{});}
     bool command(const QString& op,QJsonObject arguments,const std::function<void()>& local={},const QString& success={});
@@ -74,6 +76,8 @@ signals:
     void connectionChanged(const QString& status);
     void qrTicket(const QString& text,int seconds);
     void qrStatus(const QString& state);
+    void usersFound(const QString& request,const QJsonArray& users);
+    void searchFailed(const QString& request,const QString& detail);
 private:
     DataStoreHsx data_;
     std::filesystem::path file_;

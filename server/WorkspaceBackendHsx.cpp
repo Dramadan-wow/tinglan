@@ -92,7 +92,32 @@ QJsonObject WorkspaceBackendHsx::adminSnapshot()const{
     out["groups"]=QJsonArray{};out["messages"]=QJsonArray{};out["requests"]=QJsonArray{};
     out["membershipOrders"]=orders();return out;
 }
-QJsonObject WorkspaceBackendHsx::snapshot(int viewer)const{auto out=WorkspaceCodecHsx::encode(data_,viewer);out["viewer"]=viewer;const auto social=SocialStoreHsx(db_,data_).snapshot(viewer);for(auto it=social.begin();it!=social.end();++it)out[it.key()]=it.value();return out;}
+QJsonObject WorkspaceBackendHsx::snapshot(int viewer)const{
+    const auto social=SocialStoreHsx(db_,data_).snapshot(viewer);
+    // People met on public Weibo and in the feed: authors, commenters, follows, blocks and private messages.
+    std::set<int> met;
+    for(const auto* channel:{"feed","weibo"})for(const auto& value:social[channel].toArray()){const auto post=value.toObject();met.insert(post["author"].toInt());for(const auto& c:post["comments"].toArray())met.insert(c.toObject()["author"].toInt());}
+    for(const auto* list:{"follows","socialBlocks"})for(const auto& id:social[list].toArray())met.insert(id.toInt());
+    for(const auto& value:social["directMessages"].toArray()){const auto m=value.toObject();met.insert(m["sender"].toInt());met.insert(m["recipient"].toInt());}
+    auto out=WorkspaceCodecHsx::encode(data_,viewer,met);out["viewer"]=viewer;
+    for(auto it=social.begin();it!=social.end();++it)out[it.key()]=it.value();
+    // Avatars and dress-up follow the same rule as the user list.
+    std::set<QString> listed;for(const auto& u:out["users"].toArray())listed.insert(QString::number(u.toObject()["id"].toInt()));
+    auto looks=out["appearances"].toObject();for(const auto& key:looks.keys())if(!listed.count(key))looks.remove(key);out["appearances"]=looks;
+    return out;
+}
+QJsonArray WorkspaceBackendHsx::searchUsers(int viewer,const QString& query)const{
+    // Exact matches only — a full service number or a full nickname — so the directory cannot be browsed.
+    const auto term=query.trimmed();QJsonArray out;if(term.isEmpty()||term.toUtf8().size()>60)return out;
+    bool numeric=false;const auto number=term.toLongLong(&numeric);
+    for(const auto& [id,u]:data_.users()){
+        if(id==viewer||!u->loginAllowed())continue;bool match=QString::fromStdString(u->name()).trimmed().compare(term,Qt::CaseInsensitive)==0;QJsonArray services;
+        for(const auto& [type,account]:u->services()){if(!activeService(type))continue;if(numeric&&account.number()==number)match=true;services.append(QJsonObject{{"type",int(type)},{"nick",QString::fromStdString(account.nick())}});}
+        if(match&&!services.isEmpty())out.append(QJsonObject{{"id",id},{"name",QString::fromStdString(u->name())},{"services",services}});
+        if(out.size()>=5)break;
+    }
+    return out;
+}
 QJsonArray WorkspaceBackendHsx::orders()const{return SocialStoreHsx(db_,data_).orders();}
 QJsonObject WorkspaceBackendHsx::filePermissions(int user){
     QJsonArray services;QJsonObject routes;

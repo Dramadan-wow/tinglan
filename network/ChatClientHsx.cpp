@@ -18,7 +18,8 @@ QString explain(const QString& code){
         {"id_conflict","消息编号与已有内容冲突"},{"dedup_capacity","服务器消息窗口已满，请稍后发送"},
         {"server_busy","服务器繁忙，请稍后重试"},{"login_rate_limit","登录过于频繁，请一分钟后重试"},
         {"not_authenticated","远程登录已失效"},{"sender_mismatch","发送身份与当前登录不一致"},{"rate_limit","消息过于频繁"},
-        {"invalid_qr_request","服务器拒绝了扫码登录请求"},{"invalid_token","自动登录已失效，请重新登录"}};
+        {"invalid_qr_request","服务器拒绝了扫码登录请求"},{"invalid_token","自动登录已失效，请重新登录"},
+        {"search_rate_limit","检索过于频繁，请一分钟后再试"},{"unknown_type","服务器版本较旧，暂不支持此功能"}};
     return messages.value(code,"服务端拒绝请求（"+code+"）");
 }
 }
@@ -86,6 +87,7 @@ void ChatClientHsx::lost(const QString& reason,bool retry){
     if(socket_){auto* old=socket_;socket_=nullptr;old->disconnect(this);old->abort();old->deleteLater();}
     decoder_.clear();snapshotBytes_.clear();snapshotId_.clear();
     const auto commands=commands_.keys();commands_.clear();for(const auto& id:commands)emit workspaceResult(id,{{"ok",false},{"detail","连接中断，操作结果待重新同步；请勿重复提交"}});
+    const auto finding=searches_.values();searches_.clear();for(const auto& id:finding)emit searchFailed(id,"连接中断，请稍后重新检索");
     const bool was=authenticated_;authenticated_=false;if(was)emit authenticatedChanged(false);
     const auto ids=pending_.keys();pending_.clear();for(const auto& id:ids)emit messageResult(id,false,"连接中断，送达状态未知；不会自动重发");
     // Until this session has authenticated once, a dropped workspace connection is the login failure
@@ -120,6 +122,9 @@ void ChatClientHsx::handle(const QJsonObject& message){
     }else if(type=="qr_status"&&!authenticated_&&options_.qrLogin){
         const auto state=data["state"].toString();emit qrStatus(state);
         if(state=="cancelled")lost("已在手机上取消登录",false);
+    }else if(type=="user_search_result"&&authenticated_&&options_.workspace){
+        if(message["recipientId"].toString()!=user_||!data["users"].isArray()){lost("检索结果无效",false);return;}
+        const auto id=data["requestId"].toString();if(searches_.remove(id))emit usersFound(id,data["users"].toArray());
     }else if(type=="file_notice"&&authenticated_&&options_.workspace){
         if(message["recipientId"].toString()!=user_||!validId(data["fileId"].toString())){lost("文件通知身份无效",false);return;}emit fileNotice();
     }else if(type=="workspace_sync"&&authenticated_&&options_.workspace){
@@ -147,7 +152,7 @@ void ChatClientHsx::handle(const QJsonObject& message){
         const auto id=data.value("requestId").toString(),detail=explain(data.value("code").toString());
         // A server from before 5.7 answers qr_start with not_authenticated.
         if(!authenticated_&&options_.qrLogin&&id==loginId_){lost(data["code"]=="not_authenticated"?"服务器版本较旧，暂不支持扫码登录":detail,false);return;}
-        if(commands_.remove(id))emit workspaceResult(id,{{"ok",false},{"detail",detail}});else if(pending_.remove(id))emit messageResult(id,false,detail);else emit problem(detail);
+        if(commands_.remove(id))emit workspaceResult(id,{{"ok",false},{"detail",detail}});else if(searches_.remove(id))emit searchFailed(id,detail);else if(pending_.remove(id))emit messageResult(id,false,detail);else emit problem(detail);
     }else if(type!="heartbeat"){lost("未知服务器消息类型",false);}
 }
 QString ChatClientHsx::sendChat(const QString& recipient,const QString& text,const QString& requestedId){
@@ -157,6 +162,10 @@ QString ChatClientHsx::sendChat(const QString& recipient,const QString& text,con
     if(!validId(id)||pending_.contains(id)||pending_.size()>=100){emit problem("消息编号无效或发送队列已满");return {};}
     if(!write(envelope("chat",{{"text",text}},user_,recipient,id))){emit problem("消息未进入发送队列");return {};}
     pending_[id]=clock_.elapsed();return id;
+}
+QString ChatClientHsx::searchUsers(const QString& query){
+    if(!authenticated_||!options_.workspace){emit problem("尚未连接，无法检索用户");return {};}
+    const auto id=newId();if(!write(envelope("user_search",{{"query",query}},user_,{},id))){emit problem("检索请求未发送");return {};}searches_.insert(id);return id;
 }
 QString ChatClientHsx::workspaceCommand(const QJsonObject& data){
     if(!authenticated_||!options_.workspace||commands_.size()>=100){emit problem("尚未连接，操作未发送");return {};}

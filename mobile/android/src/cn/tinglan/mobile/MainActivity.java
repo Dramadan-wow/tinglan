@@ -77,6 +77,8 @@ public final class MainActivity extends Activity {
     private float density(){return getResources().getDisplayMetrics().density;}
     private int dp(float value){return (int)(value*density()+.5f);}
     private boolean wide(){return getResources().getConfiguration().screenWidthDp>=720;}
+    /** Conversation list beside the chat only when both fit: sidebar 212 + list 316 + at least ~430 dp of chat. */
+    private boolean splitView(){return getResources().getConfiguration().screenWidthDp>=960;}
     private GradientDrawable bg(int color,float radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
     private GradientDrawable outline(int color,float radius){GradientDrawable d=bg(color,radius);d.setStroke(dp(1),LINE);return d;}
     private LinearLayout column(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);return v;}
@@ -243,6 +245,8 @@ public final class MainActivity extends Activity {
             public void token(String value,int signedService){ui(()->prefs.edit().putString("token",value).putInt("tokenService",signedService).apply());}
             public void signedOut(){ui(()->prefs.edit().remove("token").remove("tokenService").apply());}
             public void qr(JSONObject result){ui(()->qrAnswer(result));}
+            public void found(JSONArray users){ui(()->showFound(users));}
+            public void searchFailed(String detail){ui(()->{if(searchStatus!=null)searchStatus.setText(detail);});}
             public void snapshot(JSONObject data){ui(()->{try{boolean first=workspace==null;int position=scroll==null?0:scroll.getScrollY();workspace=new Workspace(data);connecting=false;autoSigning=false;register=false;if(first){tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;}String name=workspace.name(workspace.viewer);prefs.edit().putString("nickname",name).apply();if(workspace.account(workspace.viewer,service).length()==0){JSONArray all=workspace.users.get(workspace.viewer).getJSONArray("services");service=all.getJSONObject(0).getInt("type");}
                 if(chatKind>=0){if(conversationPane!=null)fillConversations(conversationPane,conversationQuery);renderMessages();}else{showHome();if(!first)scroll.post(()->scroll.scrollTo(0,position));}}catch(Exception e){logout();toast("同步失败："+e.getMessage());}});}
             public void result(String id,JSONObject result){ui(()->{Runnable done=completions.remove(id);if(done!=null)done.run();Runnable good=successes.remove(id);if(result.optBoolean("ok")){if(good!=null)good.run();}else toast(result.optString("detail","服务器拒绝操作"));});}
@@ -288,7 +292,7 @@ public final class MainActivity extends Activity {
     private void showHome(){
         if(workspace==null){showLogin();return;}chatKind=-1;composer=null;sendButton=null;conversationPane=null;
         if(service==2&&tab!=MINE&&tab!=MEMBER)tab=FEED;
-        boolean split=wide()&&service!=2&&tab==CHATS;base(split);
+        boolean split=splitView()&&service!=2&&tab==CHATS;base(split);
         if(split){emptyChat(splitChats());return;}
         pageHeader();if(!wide()){serviceStrip(root,false);gap(root,9);connectionLabel();}makeScroll();
         if(tab==CHATS)conversations();else if(tab==FRIENDS)friends();else if(tab==GROUPS)groups();else if(tab==NOTICES)notices();else if(tab==MEMBER)membership();
@@ -314,7 +318,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(3);parent.addView(r,lp);return r;
     }
     private void empty(LinearLayout parent,String title,String detail){
-        LinearLayout c=column();c.setGravity(Gravity.CENTER);c.setPadding(dp(20),dp(30),dp(20),dp(28));FrameLayout circle=new FrameLayout(this);circle.setBackground(bg(palette.soft,32));UiKit.Icon glyph=new UiKit.Icon(this,blog()?"compass":"chat",GREEN);circle.addView(glyph,new FrameLayout.LayoutParams(dp(28),dp(28),Gravity.CENTER));c.addView(circle,new LinearLayout.LayoutParams(dp(64),dp(64)));gap(c,16);c.addView(text(title,18,INK,true));gap(c,8);TextView hint=text(detail,13,MUTED,false);hint.setGravity(Gravity.CENTER);c.addView(hint);parent.addView(c,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout c=column();c.setGravity(Gravity.CENTER);c.setPadding(dp(20),dp(30),dp(20),dp(28));FrameLayout circle=new FrameLayout(this);circle.setBackground(bg(palette.soft,32));UiKit.Icon glyph=new UiKit.Icon(this,blog()?"compass":"chat",GREEN);circle.addView(glyph,new FrameLayout.LayoutParams(dp(28),dp(28),Gravity.CENTER));c.addView(circle,new LinearLayout.LayoutParams(dp(64),dp(64)));gap(c,16);TextView heading=text(title,18,INK,true);heading.setGravity(Gravity.CENTER);c.addView(heading,new LinearLayout.LayoutParams(-1,-2));gap(c,8);TextView hint=text(detail,13,MUTED,false);hint.setGravity(Gravity.CENTER);c.addView(hint,new LinearLayout.LayoutParams(-1,-2));parent.addView(c,new LinearLayout.LayoutParams(-1,-2));
     }
     private int unreadTotal(){int count=0;for(Workspace.Conversation c:workspace.conversations(service))count+=c.unread;return count;}
     private boolean manages(JSONObject group){return group.optInt("owner")==workspace.viewer||Workspace.contains(group.optJSONArray("admins"),workspace.viewer);}
@@ -373,10 +377,34 @@ public final class MainActivity extends Activity {
         }
         if(found+joins==0)empty(body,"暂无新的通知","好友邀请与群组申请，都会出现在这里。");
     }
+    // Add friend is search-only: the server answers a full nickname or service number and lists nobody else.
+    private LinearLayout searchResults;
+    private TextView searchStatus;
+    private AlertDialog searchDialog;
     private void addFriend(){
-        List<JSONObject> candidates=new ArrayList<>();for(JSONObject u:workspace.users.values())if(u.optInt("id")!=workspace.viewer)candidates.add(u);
-        if(candidates.isEmpty()){toast("当前服务器还没有其他用户");return;}String[] names=new String[candidates.size()];for(int i=0;i<names.length;i++)names[i]=candidates.get(i).optString("name")+"  ·  ID "+candidates.get(i).optInt("id");
-        new AlertDialog.Builder(this).setTitle("添加云端用户").setItems(names,(d,w)->{JSONObject u=candidates.get(w);JSONArray accounts=u.optJSONArray("services");List<Integer> types=new ArrayList<>();List<String> labels=new ArrayList<>();if(accounts!=null)for(int i=0;i<accounts.length();i++){JSONObject s=accounts.optJSONObject(i);int t=s==null?-1:s.optInt("type",-1);if(t>=0&&t<3){types.add(t);labels.add(SERVICES[t]+" · "+s.optString("nick"));}}new AlertDialog.Builder(this).setTitle("选择对方的服务").setItems(labels.toArray(new String[0]),(d2,w2)->askText("好友申请","写一句验证信息","你好，我是 "+workspace.name(workspace.viewer),reason->command(Wire.obj("op","friend.request","target",u.optInt("id"),"contact",types.get(w2),"reason",reason)))).show();}).show();
+        LinearLayout c=column();c.setPadding(dp(22),dp(10),dp(22),0);c.addView(text("输入对方完整的昵称或服务号码查找。为保护隐私，听澜不展示全部用户。",13,MUTED,false));gap(c,12);
+        LinearLayout bar=row();EditText query=input("完整昵称或服务号码",false);query.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);bar.addView(query,new LinearLayout.LayoutParams(0,dp(50),1));
+        Runnable find=()->{String term=query.getText().toString().trim();if(term.isEmpty()){searchStatus.setText("请输入完整的昵称或服务号码");return;}searchResults.removeAllViews();searchStatus.setText("正在查找…");try{client.search(term);}catch(Exception e){searchStatus.setText(e.getMessage());}};
+        LinearLayout.LayoutParams go=new LinearLayout.LayoutParams(-2,dp(50));go.leftMargin=dp(8);bar.addView(button("查找",true,find),go);c.addView(bar);
+        query.setOnEditorActionListener((v,action,event)->{find.run();return true;});
+        gap(c,10);searchStatus=text("",12,MUTED,false);c.addView(searchStatus);gap(c,6);searchResults=column();c.addView(searchResults);
+        searchDialog=new AlertDialog.Builder(this).setTitle("添加好友").setView(c).setNegativeButton("关闭",null).create();searchDialog.setOnDismissListener(d->{searchResults=null;searchStatus=null;searchDialog=null;});searchDialog.show();
+    }
+    private void showFound(JSONArray users){
+        if(searchResults==null||workspace==null)return;searchResults.removeAllViews();
+        searchStatus.setText(users.length()==0?"没有找到。请确认对方的完整昵称或服务号码。":"找到 "+users.length()+" 位用户");
+        JSONArray mine=workspace.account(workspace.viewer,service).optJSONArray("friends");
+        for(int i=0;i<users.length();i++){
+            JSONObject u=users.optJSONObject(i);if(u==null)continue;final int id=u.optInt("id");boolean already=false;if(mine!=null)for(int j=0;j<mine.length();j++)if(mine.optJSONObject(j)!=null&&mine.optJSONObject(j).optInt("id")==id)already=true;
+            JSONArray accounts=u.optJSONArray("services");List<Integer> types=new ArrayList<>();List<String> labels=new ArrayList<>();
+            if(accounts!=null)for(int k=0;k<accounts.length();k++){JSONObject s=accounts.optJSONObject(k);int t=s==null?-1:s.optInt("type",-1);if(t>=0&&t<3){types.add(t);labels.add(SERVICES[t]+(s.optString("nick").isEmpty()?"":" · "+s.optString("nick")));}}
+            final boolean isFriend=already;View face=new UiKit.Avatar(this,u.optString("name"),id,null,"none",false);
+            listRow(searchResults,face,u.optString("name"),"",String.join("  ",labels),0,isFriend?"已是好友":"添加",false,()->{
+                if(isFriend){toast("你们已经是好友");return;}
+                if(searchDialog!=null)searchDialog.dismiss();
+                new AlertDialog.Builder(this).setTitle("选择对方的服务").setItems(labels.toArray(new String[0]),(d2,w2)->askText("好友申请","写一句验证信息","你好，我是 "+workspace.name(workspace.viewer),reason->command(Wire.obj("op","friend.request","target",id,"contact",types.get(w2),"reason",reason),()->toast("好友申请已发送，等待对方确认"),null))).show();
+            });
+        }
     }
     private void createGroup(){askText("创建群聊","输入群名称","",name->command(Wire.obj("op","group.create","name",name,"mode",service==1?1:0,"parent",0)));}
 
@@ -392,7 +420,7 @@ public final class MainActivity extends Activity {
         LinearLayout chat=column();chat.setBackgroundColor(0xfff2f7fe);panes.addView(chat,new LinearLayout.LayoutParams(0,-1,1));scroll=listScroll;return chat;
     }
     private void emptyChat(LinearLayout chat){
-        LinearLayout c=column();c.setGravity(Gravity.CENTER);c.addView(icon("wave",0xff9ac5ee,72));gap(c,18);TextView title=text("心意，在这里相遇",24,0xff729ac3,false);title.setTypeface(Typeface.SERIF);title.setLetterSpacing(.08f);c.addView(title);gap(c,8);c.addView(text("不必匆忙，一句问候也很好。",12,0xffa2b4ca,false));
+        LinearLayout c=column();c.setGravity(Gravity.CENTER);c.addView(icon("wave",0xff9ac5ee,72));gap(c,18);TextView title=text("心意，在这里相遇",24,0xff729ac3,false);title.setTypeface(Typeface.SERIF);title.setLetterSpacing(.08f);title.setGravity(Gravity.CENTER);c.addView(title,new LinearLayout.LayoutParams(-1,-2));gap(c,8);TextView words=text("不必匆忙，一句问候也很好。",12,0xffa2b4ca,false);words.setGravity(Gravity.CENTER);c.addView(words,new LinearLayout.LayoutParams(-1,-2));
         chat.addView(c,new LinearLayout.LayoutParams(-1,-1));
     }
     private void chatHeader(LinearLayout parent,View face,String title,String subtitle,boolean back,String actionLabel,Runnable action){
@@ -514,14 +542,14 @@ public final class MainActivity extends Activity {
     private void closeChat(){hideKeyboard();boolean direct=chatKind==2;chatKind=-1;if(direct){tab=FEED;weiboInbox=true;}showHome();}
     private void openChat(int kind,int target){
         JSONObject group=kind==1?workspace.groups.get(target):null;if(kind==1&&group==null){toast("群聊不存在或已解散");showHome();return;}
-        chatKind=kind;chatTarget=target;sending=false;lastReadBatch="";boolean split=wide();if(split)tab=CHATS;base(split);LinearLayout chat=split?splitChats():root;
+        chatKind=kind;chatTarget=target;sending=false;lastReadBatch="";boolean split=splitView();if(split)tab=CHATS;base(split);LinearLayout chat=split?splitChats():root;
         String title,subtitle;View face;
         if(kind==0){title=workspace.display(target,service);JSONObject u=workspace.users.get(target);String place=u==null?"":u.optString("location");subtitle=(u!=null&&u.optBoolean("online")?"在线":"离线")+" · 私聊 · "+SERVICES[service]+(place.isEmpty()||place.equals("未公开")?"":" · "+place);face=avatarUser(target,44);}
         else{title=group.optString("name");JSONArray members=group.optJSONArray("members");String notice=group.optString("notice");subtitle=(members==null?0:members.length())+" 位成员 · 群聊 · "+SERVICES[service]+(notice.isEmpty()?"":" · "+notice);face=groupAvatar(target,title,44);}
         chatHeader(chat,face,title,subtitle,!split,kind==1?"群资料":"会话资料",kind==1?this::groupInfo:this::contactInfo);
         if(!split)connectionLabel();messageArea(chat);composer(chat,"输入消息…");renderMessages();
     }
-    private int bubbleWidth(){int width=getResources().getConfiguration().screenWidthDp-(wide()?212+316+150:150);return dp(Math.max(160,Math.min(width,460)));}
+    private int bubbleWidth(){int width=getResources().getConfiguration().screenWidthDp-(splitView()?212+316+150:wide()?212+150:150);return dp(Math.max(160,Math.min(width,460)));}
     private String daySeparator(LinearLayout parent,long created,String last){
         Date date=new Date(created*1000);String day=new SimpleDateFormat("yyyyMMdd",Locale.ROOT).format(date);if(day.equals(last))return last;
         String label=day.equals(new SimpleDateFormat("yyyyMMdd",Locale.ROOT).format(new Date()))?"今天":new SimpleDateFormat("yyyy年M月d日",Locale.CHINA).format(date);
@@ -554,11 +582,30 @@ public final class MainActivity extends Activity {
     }
     private void messageActions(JSONObject m){if(m.optBoolean("recalled"))return;List<String> actions=new ArrayList<>();actions.add("复制文字");actions.add(Workspace.contains(m.optJSONArray("stars"),workspace.viewer)?"取消收藏":"收藏消息");if(m.optInt("sender")==workspace.viewer)actions.add("撤回消息");new AlertDialog.Builder(this).setItems(actions.toArray(new String[0]),(d,w)->{if(w==0){((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("听澜消息",m.optString("text")));toast("已复制");}else if(w==1)command(Wire.obj("op","chat.star","message",m.optString("id"),"enabled",!Workspace.contains(m.optJSONArray("stars"),workspace.viewer)));else command(Wire.obj("op","chat.recall","message",m.optString("id")));}).show();}
     /** Desktop 会话资料 panel as a dialog: location, service, remark, group and message statistics. */
+    /** Desktop 会话资料 as a profile card: avatar and presence, facts in a card, then messages, favourites and streak. */
     private void contactInfo(){
-        int id=chatTarget;JSONObject u=workspace.users.get(id);String remark="",category="";JSONArray friends=workspace.account(workspace.viewer,service).optJSONArray("friends");
-        if(friends!=null)for(int i=0;i<friends.length();i++){JSONObject f=friends.optJSONObject(i);if(f!=null&&f.optInt("id")==id){remark=f.optString("remark");category=f.optString("category");}}
+        final int id=chatTarget;JSONObject u=workspace.users.get(id);String remark="",category="";int contact=service;boolean friend=false;JSONArray friends=workspace.account(workspace.viewer,service).optJSONArray("friends");
+        if(friends!=null)for(int i=0;i<friends.length();i++){JSONObject f=friends.optJSONObject(i);if(f!=null&&f.optInt("id")==id){remark=f.optString("remark");category=f.optString("category");contact=Math.max(0,Math.min(2,f.optInt("contact")));friend=true;}}
         List<JSONObject> history=workspace.history(service,0,id);int stars=0;for(JSONObject m:history)if(Workspace.contains(m.optJSONArray("stars"),workspace.viewer))stars++;
-        new AlertDialog.Builder(this).setTitle(workspace.name(id)).setMessage("地区   "+(u==null?"未公开":u.optString("location","未公开"))+"\n服务   "+SERVICES[service]+"\n备注   "+(remark.isEmpty()?"未设置":remark)+"\n分组   "+(category.isEmpty()?"未分组":category)+"\n\n"+history.size()+" 条消息    ·    "+stars+" 条收藏").setPositiveButton("知道了",null).show();
+        boolean on=u!=null&&u.optBoolean("online");String place=u==null?"未公开":u.optString("location","未公开");
+        LinearLayout c=column();c.setPadding(dp(20),dp(20),dp(20),dp(4));
+        LinearLayout head=row();head.addView(avatarUser(id,64),new LinearLayout.LayoutParams(dp(64),dp(64)));LinearLayout who=column();who.setPadding(dp(14),0,0,0);
+        who.addView(line(workspace.display(id,service),20,INK,true));gap(who,4);LinearLayout state=row();state.addView(dot(on?UiKit.ONLINE:MUTED));
+        TextView presence=text((on?"在线":"离线")+(friend?" · 好友 · "+SERVICES[contact]:" · 私聊"),12,MUTED,false);presence.setPadding(dp(6),0,0,0);state.addView(presence);who.addView(state);
+        if(!remark.isEmpty())who.addView(line("昵称  "+workspace.name(id),11,MUTED,false));head.addView(who,new LinearLayout.LayoutParams(0,-2,1));c.addView(head);gap(c,16);
+        LinearLayout card=column();card.setPadding(dp(14),dp(4),dp(14),dp(4));card.setBackground(outline(palette.surface,14));
+        infoRow(card,"地区",place.isEmpty()?"未公开":place);infoRow(card,"服务",SERVICES[service]);infoRow(card,"备注",remark.isEmpty()?"未设置":remark);infoRow(card,"分组",category.isEmpty()?"未分组":category);c.addView(card);gap(c,12);
+        LinearLayout tiles=row();statTile(tiles,history.size(),"条消息");statTile(tiles,stars,"条收藏");statTile(tiles,FireBuddy.streak(workspace,service,id)[0],"天连续聊天");c.addView(tiles);
+        ScrollView s=new ScrollView(this);s.addView(c);new AlertDialog.Builder(this).setView(s).setNeutralButton("小火人衣橱",(d,w)->wardrobe(id)).setPositiveButton("知道了",null).show();
+    }
+    private void infoRow(LinearLayout card,String key,String value){
+        LinearLayout r=row();r.setPadding(0,dp(9),0,dp(9));r.addView(text(key,13,MUTED,false),new LinearLayout.LayoutParams(dp(58),-2));r.addView(text(value,14,INK,false),new LinearLayout.LayoutParams(0,-2,1));
+        if(card.getChildCount()>0){View rule=new View(this);rule.setBackgroundColor(LINE);card.addView(rule,new LinearLayout.LayoutParams(-1,dp(1)));}card.addView(r);
+    }
+    private void statTile(LinearLayout parent,int value,String caption){
+        LinearLayout t=column();t.setGravity(Gravity.CENTER);t.setPadding(dp(4),dp(10),dp(4),dp(10));t.setBackground(outline(palette.surface,14));
+        TextView n=text(String.valueOf(value),20,INK,true);n.setGravity(Gravity.CENTER);t.addView(n,new LinearLayout.LayoutParams(-1,-2));TextView label=text(caption,11,MUTED,false);label.setGravity(Gravity.CENTER);t.addView(label,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);if(parent.getChildCount()>0)lp.leftMargin=dp(8);parent.addView(t,lp);t.setContentDescription(value+" "+caption);
     }
     private void groupInfo(){
         JSONObject group=workspace.groups.get(chatTarget);if(group==null)return;final int groupId=chatTarget;boolean manager=manages(group);
@@ -689,7 +736,7 @@ public final class MainActivity extends Activity {
         tools.addView(tile("flame","小火人衣橱","和好友一起换装",this::chooseWardrobe),second);body.addView(tools);gap(body,8);
         body.addView(tile("crown","会员与充值",membershipText()+" · 开通或续费",()->{chatKind=-1;tab=MEMBER;showHome();}));gap(body,12);
         LinearLayout settings=card(body);settings.addView(button("编辑个人资料",false,()->askText("个人资料","昵称",workspace.name(workspace.viewer),name->askText("个人资料","所在地",workspace.users.get(workspace.viewer).optString("location"),location->command(Wire.obj("op","profile","name",name,"location",location))))));gap(settings,8);settings.addView(button("我的收藏",false,this::favorites));gap(settings,8);settings.addView(button("服务器与连接",false,()->new AlertDialog.Builder(this).setTitle("当前服务器").setMessage(profile.host+":"+profile.port+"\n\nTLS 1.2 / 1.3 · 严格校验证书\n\nCA SHA-256\n"+profile.fingerprint+"\n\n切换服务器请先退出登录。密码不会保存在手机存储中；自动登录只保存可吊销的登录凭证。").setPositiveButton("知道了",null).show()));
-        LinearLayout about=card(body);about.addView(text("听澜 Android 1.3.1",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信、聊天小火人与衣橱；平板使用与电脑端相同的侧边栏和双栏会话。\n电脑和手机可以同时登录；同一账号在另一部手机登录时，本机会自动下线。可用「扫一扫」登录电脑端。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留。退出后本机的自动登录失效，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->signOut()).show()));
+        LinearLayout about=card(body);about.addView(text("听澜 Android 1.3.2",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信、聊天小火人与衣橱；平板使用与电脑端相同的侧边栏和双栏会话。\n电脑和手机可以同时登录；同一账号在另一部手机登录时，本机会自动下线。可用「扫一扫」登录电脑端。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留。退出后本机的自动登录失效，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->signOut()).show()));
     }
     private void favorites(){LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);JSONArray list=workspace.array("messages");int count=0;for(int i=0;i<list.length();i++){JSONObject m=list.optJSONObject(i);if(m!=null&&!m.optBoolean("recalled")&&Workspace.contains(m.optJSONArray("stars"),workspace.viewer)){count++;LinearLayout c=card(content);c.addView(text(workspace.name(m.optInt("sender"))+" · "+clock(m.optLong("created")),12,MUTED,false));c.addView(text(m.optString("text"),16,INK,false));}}if(count==0)content.addView(text("长按聊天消息即可收藏",15,MUTED,false));ScrollView sc=new ScrollView(this);sc.addView(content);new AlertDialog.Builder(this).setTitle("我的收藏").setView(sc).setPositiveButton("关闭",null).show();}
     private void askText(String title,String hint,String current,TextAction action){LinearLayout c=column();c.setPadding(dp(22),dp(12),dp(22),0);EditText e=input(hint,false);e.setText(current);e.setSingleLine(false);e.setMaxLines(5);e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);c.addView(e);AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(c).setNegativeButton("取消",null).setPositiveButton("提交",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String value=e.getText().toString().trim();if(value.isEmpty()){toast("请输入内容");return;}action.accept(value);d.dismiss();}));d.show();}

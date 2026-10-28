@@ -8,6 +8,7 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QSslSocket>
 #include <QSslKey>
@@ -113,6 +114,12 @@ void ChatServerHsx::handle(const std::shared_ptr<Peer>& peer,const QJsonObject& 
     }
     else if(type=="chat"&&!peer->workspaceUser&&!peer->administrator){peer->lastActive=clock_.elapsed();chat(peer,m);}
     else if((type=="qr_scan"||type=="qr_confirm")&&peer->workspaceUser){peer->lastActive=clock_.elapsed();qrAction(peer,m);}
+    else if(type=="user_search"&&peer->workspaceUser&&workspace_){
+        // At most 10 searches a minute per connection, so nobody can walk through every number.
+        const auto now=clock_.elapsed();if(now-peer->searchWindow>=60000){peer->searchWindow=now;peer->searches=0;}
+        if(++peer->searches>10){error(peer,"search_rate_limit",id);return;}
+        peer->lastActive=now;send(peer,envelope("user_search_result",{{"requestId",id},{"users",workspace_->searchUsers(peer->workspaceUser,m["data"].toObject()["query"].toString())}}, {},peer->user));
+    }
     else if(type=="logout"&&peer->workspaceUser&&workspace_){
         // Signing out on this device forgets its automatic sign-in; the connection closes after the reply.
         try{workspace_->forgetToken(peer->workspaceUser,m["data"].toObject()["token"].toString());}catch(const std::exception&){emit logLine("token_forget_failed");}

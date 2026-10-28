@@ -18,4 +18,6 @@ QList<QPair<QString,QVariant>> UiHsx::services(const UserHsx& u){QList<QPair<QSt
 QList<QPair<QString,QVariant>> UiHsx::allServices(){QList<QPair<QString,QVariant>> choices;for(int i=0;i<ActiveServiceCountHsx;++i)choices.append({AppSessionHsx::q(serviceName(static_cast<ServiceHsx>(i))),i});return choices;}
 bool UiHsx::confirm(QWidget* parent,const QString& message){return QMessageBox::question(parent,"确认操作",message,QMessageBox::Yes|QMessageBox::No,QMessageBox::No)==QMessageBox::Yes;}
 QList<QPair<QString,QVariant>> UiHsx::users(const DataStoreHsx& data,int exclude){QList<QPair<QString,QVariant>> choices;for(const auto& [id,user]:data.users())if(id!=exclude)choices.append({AppSessionHsx::q(user->name()),id});return choices;}
+QList<QPair<QString,QVariant>> UiHsx::friends(const AppSessionHsx& session){QList<QPair<QString,QVariant>> choices;if(!session.signedIn())return choices;for(const auto& [id,f]:session.data().account(session.user(),session.service()).friends())choices.append({name(session.data(),id)+(f.remark().empty()?QString{}:" / "+AppSessionHsx::q(f.remark())),id});return choices;}
+QString UiHsx::name(const DataStoreHsx& data,int id){const auto it=data.users().find(id);return it==data.users().end()?QString("听澜用户 %1").arg(id):AppSessionHsx::q(it->second->name());}
 }

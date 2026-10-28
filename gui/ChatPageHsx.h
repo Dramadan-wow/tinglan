@@ -1,6 +1,7 @@
 #pragma once
 #include "AppSessionHsx.h"
 #include <QWidget>
+#include <array>
 class QTimer; class QResizeEvent; class QListWidget; class QLineEdit; class QLabel; class QScrollArea; class QVBoxLayout; class QComboBox; class QCheckBox; class QPushButton;
 namespace im {
 class FireBuddyHsx;
@@ -22,11 +23,13 @@ protected:
 private:
     void showHistory();
     void refreshDetails();
+    void showProfile();
     void send();
     AppSessionHsx& session_;
     QListWidget* conversations_;
     QLineEdit *search_, *composer_, *conversationSearch_;
-    QLabel *title_, *subtitle_, *headerAvatar_, *contactName_, *contactDetails_, *contactStats_;
+    QLabel *title_, *subtitle_, *headerAvatar_, *contactName_, *contactDetails_, *contactStats_, *contactStatus_;
+    std::array<QLabel*,3> contactTiles_{};
     QWidget *contactPanel_, *contactArtwork_, *filters_;
     QPushButton *profileButton_, *detailsToggle_ = nullptr;
     QScrollArea* scroll_;

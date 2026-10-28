@@ -10,14 +10,26 @@ template<class Set> QJsonArray array(const Set& values){QJsonArray out;for(auto 
 // Placeholders keep hidden fields decodable by already-installed clients (DateHsx and UserHsx reject empty values).
 const QString HiddenDate="1900-01-01",HiddenLocation="未公开";
 }
-QJsonObject WorkspaceCodecHsx::encode(const DataStoreHsx& d,int viewer){
+QJsonObject WorkspaceCodecHsx::encode(const DataStoreHsx& d,int viewer,const std::set<int>& met){
     QJsonArray users,groups,messages,requests;
     // Friendship is two-way, but collect both directions so a half-written relation never widens visibility.
     std::set<int> contacts;
     if(viewer>0)for(const auto& [id,ptr]:d.users_)for(const auto& [type,a]:ptr->services_)for(const auto& [fid,f]:a.friends_){if(id==viewer)contacts.insert(fid);else if(fid==viewer)contacts.insert(id);}
+    // A user sees only people they can meet: friends, members of their groups, both sides of their requests
+    // and private messages, and whoever the caller adds (public Weibo authors). Others are found by search only.
+    std::set<int> people(contacts.begin(),contacts.end());people.insert(met.begin(),met.end());
+    if(viewer>0){
+        people.insert(viewer);
+        for(const auto& [id,ptr]:d.groups_)if(ptr->contains(viewer)){for(const auto& [uid,types]:ptr->members_)people.insert(uid);for(const auto& [uid,type]:ptr->pending_)people.insert(uid);}
+        for(const auto& [id,r]:d.requests_)if(r.from()==viewer||r.to()==viewer){people.insert(r.from());people.insert(r.to());}
+        for(const auto& [id,m]:d.messages_)if(m.kind_==MessageKindHsx::Private&&(m.sender_==viewer||m.target_==viewer)){people.insert(m.sender_);people.insert(m.target_);}
+    }
     for(const auto& [id,ptr]:d.users_){const auto& u=*ptr;QJsonArray services;const bool self=viewer<=0||viewer==id,known=self||contacts.count(id)!=0;
+        if(viewer>0&&!people.count(id))continue;
         for(const auto& [type,a]:u.services_){QJsonArray friends;for(const auto& [fid,f]:a.friends_)if(!viewer||viewer==id)friends.append(QJsonObject{{"id",fid},{"contact",int(f.contact())},{"remark",q(f.remark())},{"category",q(f.category())}});
-            services.append(QJsonObject{{"type",int(type)},{"number",QString::number(a.number_)},{"nick",q(a.nick_)},{"password",viewer?QString{}:q(a.password_)},{"shared",a.shared_},{"bound",self?QString::number(a.boundQQ_):QString("0")},{"friends",friends},{"blocked",(!viewer||viewer==id)?array(a.blocked_):QJsonArray{}}});}
+            // Account numbers are what search matches on, so only friends see them; others get the internal id,
+            // which is already in the snapshot and keeps the account decodable (numbers must be positive).
+            services.append(QJsonObject{{"type",int(type)},{"number",QString::number(known?a.number_:id)},{"nick",q(a.nick_)},{"password",viewer?QString{}:q(a.password_)},{"shared",a.shared_},{"bound",self?QString::number(a.boundQQ_):QString("0")},{"friends",friends},{"blocked",(!viewer||viewer==id)?array(a.blocked_):QJsonArray{}}});}
         users.append(QJsonObject{{"id",id},{"type",q(u.typeName())},{"name",q(u.name_)},{"birth",self?q(u.birth_.str()):HiddenDate},{"applied",self?q(u.applied_.str()):HiddenDate},{"location",known?q(u.location_):HiddenLocation},{"shared",u.sharesQQ()},{"online",known&&u.online_},{"disabled",self&&u.disabled_},{"services",services}});
     }
     for(const auto& [id,ptr]:d.groups_){const auto& g=*ptr;QJsonArray members,pending,mutes;

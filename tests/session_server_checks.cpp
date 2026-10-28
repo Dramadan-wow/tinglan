@@ -8,6 +8,8 @@
 #include "WorkspaceBackendHsx.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QRegularExpression>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -95,6 +97,19 @@ int main(int argc,char** argv){
         mobile.send("qr_scan",{{"code",other}});mobile.wait("qr_result");expect(refused.wait("qr_status")["state"]=="scanned","the second code is scanned");mobile.send("qr_confirm",{{"code",other},{"approve",false}});
         expect(refused.wait("qr_status")["state"]=="cancelled"&&refused.waitClosed(),"declining on the phone cancels the desktop sign-in");
         mobile.wait("qr_result");
+
+        // Adding friends is search-only: strangers are not in the snapshot and need an exact name or number.
+        const int stranger=backend.registerUser("检索对象",im::PasswordHsx::hash(Password.toStdString()),im::ServiceHsx::QQ);
+        bool listed=false;for(const auto& u:backend.snapshot(user)["users"].toArray())listed=listed||u.toObject()["id"].toInt()==stranger;
+        expect(!listed,"a stranger is not in the user's snapshot");
+        auto search=[&](const QString& query){const auto id=mobile.send("user_search",{{"query",query}});auto r=mobile.wait("user_search_result");expect(r["requestId"]==id,"search answers its request");return r["users"].toArray();};
+        const auto byName=search("检索对象");
+        expect(byName.size()==1&&byName[0].toObject()["id"].toInt()==stranger&&!QJsonDocument(byName).toJson().contains("number"),"an exact nickname finds the user without exposing account numbers");
+        expect(search("检索").isEmpty(),"part of a nickname finds nobody");
+        expect(search(QString::number(stranger)).size()==1,"an exact service number finds the user");
+        expect(search("会话测试").isEmpty(),"searching for yourself returns nothing");
+        for(int i=0;i<6;++i)search("nobody-"+QString::number(i));
+        mobile.send("user_search",{{"query","检索对象"}});expect(mobile.wait("error")["code"]=="search_rate_limit","more than ten searches a minute are refused");
 
         // The desktop client end to end: request a code, the phone approves, the client signs in.
         ChatClientHsx client;QString shown;QObject::connect(&client,&ChatClientHsx::qrTicket,[&](const QString& text,int){shown=text;});

@@ -53,6 +53,8 @@ private:
         QString device,onlineKey,qrCode,qrRequest;
         bool legacyClient=true,wantsFiles=false;
         qint64 qrUntil=0;
+        qint64 searchWindow=0;
+        int searches=0;
     };
     struct Ticket { std::weak_ptr<Peer> peer; int service=0; qint64 expires=0; int scannedBy=0; };
     struct Seen { QByteArray digest; qint64 time; };

@@ -75,6 +75,8 @@ public final class UiChecks extends Instrumentation {
         // Long-pressing the buddy opens the wardrobe shared with this friend.
         main(()->{try{Method m=activity.getClass().getDeclaredMethod("wardrobe",int.class);m.setAccessible(true);m.invoke(activity,2);}catch(Exception e){throw new RuntimeException(e);}});screenshot("14-buddy-wardrobe-phone");
         sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();
+        main(()->{try{call("contactInfo");}catch(Exception e){throw new RuntimeException(e);}});screenshot("17-contact-card-phone");
+        sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();
         main(()->{try{set("chatKind",-1);set("tab",3);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("扫一扫");check("小火人衣橱");check("会员与充值");screenshot("15-mine-phone");
         main(()->{try{set("tab",6);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("星芽会员");check("月汐");check("我已付款，提交核验");check("还没有订单");screenshot("16-membership-phone");
         main(()->{try{set("chatKind",-1);set("tab",1);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("新的朋友");check("晴空来信");screenshot("08-friends-phone");
