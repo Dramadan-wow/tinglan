@@ -1,6 +1,6 @@
 # 更新记录
 
-## 服务器 5.7.3 / Android 1.3.3（待发布）
+## 服务器 5.7.3 / Android 1.3.3 — 2026-10-28
 
 - 手机端新增检查更新：登录后最多每 6 小时自动检查，也可在“我的”点版本号旁的“检查更新”。新版本从听澜服务器经 TLS 分片下载，核对 SHA-256，再核对包名、版本和签名与已安装的听澜一致，然后交给系统安装界面，由用户确认；第一次需要允许听澜“安装未知应用”。
 - 服务器的更新通道增加安卓平台：`android-stable.json` 与 APK 和电脑端的 `client-stable.json` 分开，互不提供对方的安装包。`publish_client_update.py` 支持 `--manifest android-update.json`；`update-server.sh` 在更新包里带有 `android-update.json` 时一并发布；新增 `publish-update.sh`，只发布客户端更新、不重新编译服务器。
