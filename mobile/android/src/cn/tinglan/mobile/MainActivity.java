@@ -64,7 +64,7 @@ public final class MainActivity extends Activity {
     private FireBuddy buddy;
     private TextView buddyBubble;
     private float buddyX,buddyY;
-    @Override public void onCreate(Bundle saved){super.onCreate(saved);prefs=getSharedPreferences("connection",MODE_PRIVATE);service=Math.max(0,Math.min(2,prefs.getInt("service",0)));try{String code=prefs.getString("code","");if(!code.isEmpty())profile=ConnectionProfile.parse(code);}catch(Exception e){profile=null;}
+    @Override public void onCreate(Bundle saved){super.onCreate(saved);prefs=getSharedPreferences("connection",MODE_PRIVATE);cleanUpdates();service=Math.max(0,Math.min(2,prefs.getInt("service",0)));try{String code=prefs.getString("code","");if(!code.isEmpty())profile=ConnectionProfile.parse(code);}catch(Exception e){profile=null;}
         if(profile!=null&&!prefs.getString("token","").isEmpty())autoLogin();else showLogin();}
     @Override protected void onDestroy(){destroyed=true;if(client!=null)client.close();super.onDestroy();}
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration){
@@ -247,7 +247,7 @@ public final class MainActivity extends Activity {
             public void qr(JSONObject result){ui(()->qrAnswer(result));}
             public void found(JSONArray users){ui(()->showFound(users));}
             public void searchFailed(String detail){ui(()->{if(searchStatus!=null)searchStatus.setText(detail);});}
-            public void snapshot(JSONObject data){ui(()->{try{boolean first=workspace==null;int position=scroll==null?0:scroll.getScrollY();workspace=new Workspace(data);connecting=false;autoSigning=false;register=false;if(first){tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;}String name=workspace.name(workspace.viewer);prefs.edit().putString("nickname",name).apply();if(workspace.account(workspace.viewer,service).length()==0){JSONArray all=workspace.users.get(workspace.viewer).getJSONArray("services");service=all.getJSONObject(0).getInt("type");}
+            public void snapshot(JSONObject data){ui(()->{try{boolean first=workspace==null;int position=scroll==null?0:scroll.getScrollY();workspace=new Workspace(data);connecting=false;autoSigning=false;register=false;if(first){tab=service==2?FEED:CHATS;channel=service==2?"weibo":"moments";weiboInbox=false;weiboFilter=0;autoUpdateCheck();}String name=workspace.name(workspace.viewer);prefs.edit().putString("nickname",name).apply();if(workspace.account(workspace.viewer,service).length()==0){JSONArray all=workspace.users.get(workspace.viewer).getJSONArray("services");service=all.getJSONObject(0).getInt("type");}
                 if(chatKind>=0){if(conversationPane!=null)fillConversations(conversationPane,conversationQuery);renderMessages();}else{showHome();if(!first)scroll.post(()->scroll.scrollTo(0,position));}}catch(Exception e){logout();toast("同步失败："+e.getMessage());}});}
             public void result(String id,JSONObject result){ui(()->{Runnable done=completions.remove(id);if(done!=null)done.run();Runnable good=successes.remove(id);if(result.optBoolean("ok")){if(good!=null)good.run();}else toast(result.optString("detail","服务器拒绝操作"));});}
             public void failure(String detail,boolean terminal){ui(()->{if(terminal){logout();new AlertDialog.Builder(MainActivity.this).setTitle("连接未完成").setMessage(detail).setPositiveButton("知道了",null).show();}else toast(detail);});}
@@ -736,8 +736,71 @@ public final class MainActivity extends Activity {
         tools.addView(tile("flame","小火人衣橱","和好友一起换装",this::chooseWardrobe),second);body.addView(tools);gap(body,8);
         body.addView(tile("crown","会员与充值",membershipText()+" · 开通或续费",()->{chatKind=-1;tab=MEMBER;showHome();}));gap(body,12);
         LinearLayout settings=card(body);settings.addView(button("编辑个人资料",false,()->askText("个人资料","昵称",workspace.name(workspace.viewer),name->askText("个人资料","所在地",workspace.users.get(workspace.viewer).optString("location"),location->command(Wire.obj("op","profile","name",name,"location",location))))));gap(settings,8);settings.addView(button("我的收藏",false,this::favorites));gap(settings,8);settings.addView(button("服务器与连接",false,()->new AlertDialog.Builder(this).setTitle("当前服务器").setMessage(profile.host+":"+profile.port+"\n\nTLS 1.2 / 1.3 · 严格校验证书\n\nCA SHA-256\n"+profile.fingerprint+"\n\n切换服务器请先退出登录。密码不会保存在手机存储中；自动登录只保存可吊销的登录凭证。").setPositiveButton("知道了",null).show()));
-        LinearLayout about=card(body);about.addView(text("听澜 Android 1.3.2",16,INK,true));gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信、聊天小火人与衣橱；平板使用与电脑端相同的侧边栏和双栏会话。\n电脑和手机可以同时登录；同一账号在另一部手机登录时，本机会自动下线。可用「扫一扫」登录电脑端。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留。退出后本机的自动登录失效，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->signOut()).show()));
+        LinearLayout about=card(body);LinearLayout title=row();title.addView(text("听澜 Android "+appVersion(),16,INK,true),new LinearLayout.LayoutParams(0,-2,1));TextView checkNow=text("检查更新",13,GREEN,true);checkNow.setPadding(dp(10),dp(6),0,dp(6));checkNow.setOnClickListener(v->checkUpdate(true));title.addView(checkNow);about.addView(title);gap(about,8);about.addView(text("原生安卓 · 与桌面端共用云端，界面与电脑端统一。\n已支持好友、群聊、通知、动态、收藏、微博关注与私信、聊天小火人与衣橱；平板使用与电脑端相同的侧边栏和双栏会话。\n电脑和手机可以同时登录；同一账号在另一部手机登录时，本机会自动下线。可用「扫一扫」登录电脑端。\n应用在前台时保持实时连接；本版不含系统离线推送、文件传输、管理后台或支付。",13,MUTED,false));gap(body,4);body.addView(button("退出账号",false,()->new AlertDialog.Builder(this).setTitle("退出账号？").setMessage("云端数据会保留。退出后本机的自动登录失效，下次需重新输入密码。").setNegativeButton("取消",null).setPositiveButton("退出",(d,w)->signOut()).show()));
     }
+    // In-app update: the server's Android feed on a separate TLS connection, then the system installer.
+    private Updater updater;
+    private boolean updateOffered=false;
+    private java.io.File pendingApk;
+    private JSONObject pendingRelease;
+    private String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "0.0.0";}}
+    private java.io.File updateFolder(){return new java.io.File(getCacheDir(),"updates");}
+    /** After sign-in, at most every 6 hours; only an available update is shown. */
+    private void autoUpdateCheck(){long now=System.currentTimeMillis();if(updateOffered||now-prefs.getLong("updateChecked",0)<6*3600_000L)return;prefs.edit().putLong("updateChecked",now).apply();checkUpdate(false);}
+    private void checkUpdate(boolean manual){
+        if(profile==null){if(manual)toast("尚未设置服务器");return;}
+        if(updater!=null){if(manual)toast("正在检查更新…");return;}
+        if(manual)toast("正在检查更新…");String current=appVersion();
+        final Updater[] holder=new Updater[1];
+        holder[0]=new Updater(profile,current,new Updater.Listener(){
+            private void ui(Runnable r){runOnUiThread(()->{if(updater==holder[0])updater=null;if(!destroyed)r.run();});}
+            public void current(boolean published){ui(()->{if(manual)toast(published?"已是最新版本 "+current:"服务器暂未发布安卓更新，当前版本 "+current);});}
+            public void available(JSONObject release){ui(()->{if(manual||!updateOffered)offerUpdate(release);});}
+            public void failed(String detail){ui(()->{if(manual)new AlertDialog.Builder(MainActivity.this).setTitle("检查更新失败").setMessage(detail).setPositiveButton("知道了",null).show();});}
+        });
+        updater=holder[0];updater.check();
+    }
+    private void offerUpdate(JSONObject release){
+        updateOffered=true;String version=release.optString("version"),notes=release.optString("notes").trim();
+        String size=String.format(Locale.ROOT,"%.1f MB",release.optLong("size")/1048576.0);
+        new AlertDialog.Builder(this).setTitle("发现新版本 "+version).setMessage((notes.isEmpty()?"":notes+"\n\n")+"当前版本 "+appVersion()+" · 安装包 "+size+"\n从听澜服务器加密下载，校验后由系统安装；聊天记录和登录状态会保留。")
+            .setNegativeButton("稍后",null).setPositiveButton("下载并安装",(d,w)->downloadUpdate(release)).show();
+    }
+    private void downloadUpdate(JSONObject release){
+        java.io.File cached=new java.io.File(updateFolder(),Updater.apkName(release.optString("version")));
+        if(Updater.matches(cached,release)){installUpdate(cached,release);return;}
+        if(updater!=null){toast("正在检查更新，请稍候再试");return;}
+        LinearLayout c=column();c.setPadding(dp(22),dp(12),dp(22),dp(4));ProgressBar bar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(1000);c.addView(bar,new LinearLayout.LayoutParams(-1,-2));
+        TextView detail=text("正在连接服务器…",12,MUTED,false);c.addView(detail);
+        final Updater[] holder=new Updater[1];
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("正在下载 "+release.optString("version")).setView(c).setCancelable(false).setNegativeButton("取消",(d,w)->{if(holder[0]!=null)holder[0].cancel();if(updater==holder[0])updater=null;}).show();
+        holder[0]=new Updater(profile,appVersion(),new Updater.Listener(){
+            private void ui(Runnable r){runOnUiThread(()->{if(!destroyed)r.run();});}
+            private void finish(){if(updater==holder[0])updater=null;if(dialog.isShowing())dialog.dismiss();}
+            public void progress(long received,long total){ui(()->{bar.setProgress((int)(received*1000/total));detail.setText(String.format(Locale.ROOT,"已下载 %.1f / %.1f MB",received/1048576.0,total/1048576.0));});}
+            public void ready(java.io.File apk,JSONObject r){ui(()->{finish();installUpdate(apk,r);});}
+            public void failed(String reason){ui(()->{finish();new AlertDialog.Builder(MainActivity.this).setTitle("更新下载失败").setMessage(reason).setPositiveButton("知道了",null).show();});}
+        });
+        updater=holder[0];updater.download(release,updateFolder());
+    }
+    private void installUpdate(java.io.File apk,JSONObject release){
+        String problem=ApkInstall.verify(this,apk,release);
+        if(problem!=null){apk.delete();new AlertDialog.Builder(this).setTitle("更新未安装").setMessage(problem+"。安装包已删除。").setPositiveButton("知道了",null).show();return;}
+        if(!getPackageManager().canRequestPackageInstalls()){
+            pendingApk=apk;pendingRelease=release;
+            new AlertDialog.Builder(this).setTitle("允许听澜安装更新").setMessage("安卓要求先在系统设置里允许听澜「安装未知应用」。打开开关后返回听澜，会继续安装。").setNegativeButton("取消",(d,w)->{pendingApk=null;pendingRelease=null;})
+                .setPositiveButton("去设置",(d,w)->{try{startActivity(new android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,android.net.Uri.parse("package:"+getPackageName())));}catch(Exception e){toast("请在系统设置中允许听澜安装未知应用");}}).show();
+            return;
+        }
+        pendingApk=null;pendingRelease=null;
+        try{ApkInstall.install(this,apk);toast("请在系统弹窗中确认安装，安装后听澜会自动重启");}catch(Exception e){toast("无法启动系统安装："+e.getMessage());}
+    }
+    @Override protected void onResume(){
+        super.onResume();
+        if(pendingApk!=null&&getPackageManager().canRequestPackageInstalls()){java.io.File apk=pendingApk;JSONObject release=pendingRelease;if(Updater.matches(apk,release))installUpdate(apk,release);else{pendingApk=null;pendingRelease=null;}}
+    }
+    /** Downloads that are not newer than this app (already installed or abandoned) are removed. */
+    private void cleanUpdates(){java.io.File[] files=updateFolder().listFiles();if(files==null)return;String current=appVersion();for(java.io.File f:files){String name=f.getName();String v=name.startsWith("Tinglan-Android-")&&name.endsWith(".apk")?name.substring(16,name.length()-4):"";if(!Updater.newer(v,current))f.delete();}}
     private void favorites(){LinearLayout content=column();content.setPadding(dp(20),0,dp(20),0);JSONArray list=workspace.array("messages");int count=0;for(int i=0;i<list.length();i++){JSONObject m=list.optJSONObject(i);if(m!=null&&!m.optBoolean("recalled")&&Workspace.contains(m.optJSONArray("stars"),workspace.viewer)){count++;LinearLayout c=card(content);c.addView(text(workspace.name(m.optInt("sender"))+" · "+clock(m.optLong("created")),12,MUTED,false));c.addView(text(m.optString("text"),16,INK,false));}}if(count==0)content.addView(text("长按聊天消息即可收藏",15,MUTED,false));ScrollView sc=new ScrollView(this);sc.addView(content);new AlertDialog.Builder(this).setTitle("我的收藏").setView(sc).setPositiveButton("关闭",null).show();}
     private void askText(String title,String hint,String current,TextAction action){LinearLayout c=column();c.setPadding(dp(22),dp(12),dp(22),0);EditText e=input(hint,false);e.setText(current);e.setSingleLine(false);e.setMaxLines(5);e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);c.addView(e);AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(c).setNegativeButton("取消",null).setPositiveButton("提交",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(b->{String value=e.getText().toString().trim();if(value.isEmpty()){toast("请输入内容");return;}action.accept(value);d.dismiss();}));d.show();}
     private String clock(long seconds){if(seconds<=0)return "";return new SimpleDateFormat("MM-dd HH:mm",Locale.getDefault()).format(new Date(seconds*1000));}

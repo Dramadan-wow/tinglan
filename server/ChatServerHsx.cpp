@@ -332,8 +332,9 @@ void ChatServerHsx::update(const std::shared_ptr<Peer>& p,const QJsonObject& m){
         error(p,"update_requires_separate_tls",id,true);return;
     }
     if(m["type"]=="update_check"){
-        if(p->updater||data["edition"]!="client"||data["platform"]!="windows-x64"||!validReleaseVersion(data["version"].toString())){error(p,"invalid_update_check",id,true);return;}
-        p->updater=true;p->lastActive=clock_.elapsed();p->updateInfo=openPublishedUpdate(options_.updatesDirectory,p->updateFile);
+        const auto platform=data["platform"].toString();
+        if(p->updater||data["edition"]!="client"||!validUpdatePlatform(platform)||!validReleaseVersion(data["version"].toString())){error(p,"invalid_update_check",id,true);return;}
+        p->updater=true;p->lastActive=clock_.elapsed();p->updateInfo=openPublishedUpdate(options_.updatesDirectory,p->updateFile,platform);
         const bool available=!p->updateInfo.isEmpty()&&newerRelease(p->updateInfo["version"].toString(),data["version"].toString());
         send(p,envelope("update_info",{{"requestId",id},{"available",available},{"published",!p->updateInfo.isEmpty()},{"release",available?p->updateInfo:QJsonObject{}}}));
         if(!available)p->updateFile.close();return;

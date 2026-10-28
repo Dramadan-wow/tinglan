@@ -88,6 +88,10 @@ def main():
         run([buildtools/('aapt2'+executable),'dump','badging',a.out])
     digest=hashlib.sha256(a.out.read_bytes()).hexdigest()
     (a.out.parent/'SHA256SUMS.txt').write_text(digest+'  '+a.out.name+'\n',encoding='utf-8')
+    # Manifest for the server's Android update feed (scripts/publish_client_update.py --manifest android-update.json).
+    notes=(source/'update-notes.txt').read_text(encoding='utf-8').strip()
+    (a.out.parent/'android-update.json').write_text(json.dumps(dict(schema=1,edition='client',platform='android',version=version,
+        size=a.out.stat().st_size,sha256=digest,notes=notes),ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(dict(apk=str(a.out),bytes=a.out.stat().st_size,sha256=digest,signatureVerified=True,minAndroid='8.0',targetSdk=35),ensure_ascii=False,indent=2))
 
 if __name__=='__main__':main()

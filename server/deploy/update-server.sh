@@ -3,7 +3,8 @@
 #
 # Run as root from the bundle directory:  bash update-server.sh
 # The bundle holds tinglan-<version>-server-source.tar.gz, SHA256SUMS and, optionally,
-# Tinglan-<version>-Client-Setup.exe with client-update.json for the client update feed.
+# Tinglan-<version>-Client-Setup.exe with client-update.json for the client update feed, and
+# Tinglan-Android-<x.y.z>.apk with android-update.json for the Android update feed.
 # Builds before stopping anything, backs up the data directory, binary and configuration,
 # replaces only the binary and rolls it back if the service does not come up.
 # server.json, certificates and the database are never rewritten.
@@ -67,17 +68,26 @@ trap - ERR
 echo "服务运行中：$("$BIN" --version 2>&1 | head -1)"
 ss -ltn | grep -E ':5611[01] ' || true
 
-if [ -f client-update.json ]; then
-    step "发布普通客户端更新"
-    RELEASE=$(mktemp -d /tmp/tinglan-release.XXXXXX)
-    cp client-update.json "Tinglan-$VERSION-Client-Setup.exe" "$RELEASE/"
-    cp src/scripts/publish_client_update.py "$RELEASE/"
-    chown -R "$SERVICE:$SERVICE" "$RELEASE"
+publish_feed(){ # manifest package
+    local release
+    release=$(mktemp -d /tmp/tinglan-release.XXXXXX)
+    cp "$1" "$2" "$release/"
+    cp src/scripts/publish_client_update.py "$release/"
+    chown -R "$SERVICE:$SERVICE" "$release"
     # Publish as the service user so the feed stays readable by the server only.
-    (cd "$RELEASE" && runuser -u "$SERVICE" -- python3 "$RELEASE/publish_client_update.py" --release-directory "$RELEASE" --server-config "$CONFIG")
-    rm -rf "$RELEASE"
-    ls -la "$DATA/updates"
+    (cd "$release" && runuser -u "$SERVICE" -- python3 "$release/publish_client_update.py" --release-directory "$release" --server-config "$CONFIG" --manifest "$1")
+    rm -rf "$release"
+}
+if [ -f client-update.json ]; then
+    step "发布电脑端普通客户端更新"
+    publish_feed client-update.json "Tinglan-$VERSION-Client-Setup.exe"
 fi
+if [ -f android-update.json ]; then
+    step "发布安卓客户端更新"
+    APK=$(ls Tinglan-Android-*.apk | head -1)
+    publish_feed android-update.json "$APK"
+fi
+if [ -f client-update.json ] || [ -f android-update.json ]; then ls -la "$DATA/updates"; fi
 
 step "完成"
 journalctl -u "$SERVICE" -n 5 --no-pager

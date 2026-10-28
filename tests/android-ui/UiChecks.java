@@ -77,7 +77,13 @@ public final class UiChecks extends Instrumentation {
         sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();
         main(()->{try{call("contactInfo");}catch(Exception e){throw new RuntimeException(e);}});screenshot("17-contact-card-phone");
         sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();
-        main(()->{try{set("chatKind",-1);set("tab",3);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("扫一扫");check("小火人衣橱");check("会员与充值");screenshot("15-mine-phone");
+        main(()->{try{set("chatKind",-1);set("tab",3);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("扫一扫");check("小火人衣橱");check("会员与充值");check("检查更新");screenshot("15-mine-phone");
+        // In-app update: version rules on the device, then the offer dialog for a server release.
+        Class<?> updater=activity.getClassLoader().loadClass("cn.tinglan.mobile.Updater");Method newer=updater.getMethod("newer",String.class,String.class),valid=updater.getMethod("validRelease",org.json.JSONObject.class);
+        org.json.JSONObject release=new org.json.JSONObject().put("schema",1).put("edition","client").put("platform","android").put("version","1.10.0").put("size",4400000).put("sha256",new String(new char[64]).replace((char)0,(char)97)).put("notes","新增「检查更新」，聊天记录和登录状态保留。");
+        if(!(Boolean)newer.invoke(null,"1.10.0","1.3.3")||(Boolean)newer.invoke(null,"1.3.3","1.3.3")||(Boolean)newer.invoke(null,"1.3.2","1.3.3")||!(Boolean)valid.invoke(null,release)||(Boolean)valid.invoke(null,new org.json.JSONObject(release.toString()).put("platform","windows-x64")))throw new AssertionError("Update version rules");checks++;
+        main(()->{try{Method offer=activity.getClass().getDeclaredMethod("offerUpdate",org.json.JSONObject.class);offer.setAccessible(true);offer.invoke(activity,release);}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();screenshot("18-update-offer-phone");
+        sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();
         main(()->{try{set("tab",6);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("星芽会员");check("月汐");check("我已付款，提交核验");check("还没有订单");screenshot("16-membership-phone");
         main(()->{try{set("chatKind",-1);set("tab",1);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("新的朋友");check("晴空来信");screenshot("08-friends-phone");
         main(()->{try{set("tab",5);call("showHome");}catch(Exception e){throw new RuntimeException(e);}});check("山野手记");check("交流摄影");screenshot("09-notices-phone");

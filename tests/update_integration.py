@@ -68,6 +68,24 @@ def main():
     except ValueError:check(True,'Publisher refuses release downgrade')
     setup.write_json(feed,manifest)
     check(not (feed.parent/'.publish.lock').exists(),'Publisher releases lock after failed publication')
+    # Android feed: its own manifest and APK, served on the same TLS update channel.
+    apk=b'PK'+bytes(range(256))*300
+    android=dict(schema=1,edition='client',platform='android',version='1.3.3',size=len(apk),sha256=hashlib.sha256(apk).hexdigest(),notes='安卓更新')
+    (release/'Tinglan-Android-1.3.3.apk').write_bytes(apk);setup.write_json(release/'android-update.json',android)
+    try:publisher.publish(release,server,'android-update.json')
+    except ValueError:raise AssertionError('Android package not published')
+    check(json.loads((feed.parent/'android-stable.json').read_text(encoding='utf-8'))==android and json.loads(feed.read_text(encoding='utf-8'))==manifest,'Android feed published beside the unchanged Windows feed')
+    r=raw();r.send(n.message('update_check',dict(edition='client',platform='android',version='1.3.2')));info=r.recv()['data']
+    check(info['available'] and info['release']==android,'Android client is offered the APK, not the Windows installer')
+    received=b''
+    while len(received)<len(apk):
+        r.send(n.message('update_chunk',dict(sha256=android['sha256'],offset=len(received))));received+=__import__('base64').b64decode(r.recv()['data']['payload'])
+    r.close();check(received==apk,'Android APK downloads in verified TLS chunks')
+    r=raw();r.send(n.message('update_check',dict(edition='client',platform='android',version='1.3.3')));check(not r.recv()['data']['available'],'Same Android version is not offered again');r.close()
+    r=raw();r.send(n.message('update_check',dict(edition='client',platform='ios',version='1.0.0')));check(r.recv()['data']['code']=='invalid_update_check','Unknown platform rejected');r.close()
+    setup.write_json(release/'android-update.json',{**android,'platform':'windows-x64'})
+    try:publisher.publish(release,server,'android-update.json');raise AssertionError('APK published as Windows installer')
+    except (ValueError,FileNotFoundError):check(json.loads(feed.read_text(encoding='utf-8'))==manifest,'APK cannot be published into the Windows feed')
 status='passed';error=None
 try:main()
 except Exception as e:status='failed';error=repr(e);print('FAIL',error,flush=True)
